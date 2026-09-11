@@ -1,0 +1,49 @@
+# Local application data and previous working directories: never publish.
+/outputs/
+/work/
+/cleanup-old-files.ps1
+
+# Credentials and browser sessions, wherever they occur.
+settings.dat
+console-profile/
+*.WebView2/
+.env
+.env.*
+!.env.example
+*secrets*
+*credentials*
+*.key
+*.pem
+*.pfx
+*.p12
+Cookies*
+Login Data*
+Local State
+Web Data*
+*.har
+*.dmp
+connection-status.txt
+glass-test.txt
+test-result.txt
+
+# Build outputs, downloaded dependencies and local tooling.
+/build/
+/.deps/
+**/bin/
+**/obj/
+node_modules/
+*.exe
+*.dll
+*.pdb
+*.zip
+*.nupkg
+*.log
+*.tmp
+.vs/
+.vscode/
+.idea/
+.codex/
+.agents/
+Thumbs.db
+Desktop.ini
+.DS_Store
