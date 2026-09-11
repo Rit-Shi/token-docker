@@ -22,7 +22,7 @@ class Meter {
 }
 class Config {
     public string Glm="", DeepSeek="";
-    public bool International=false;
+    public bool International=false; public bool ShowGlm=true, ShowDeepSeek=true;
     public int X=-1, Y=30; public string Theme="dark", Edge="right", UsageFile=""; public bool ConsoleConnected=false;
 }
 static class Data {
