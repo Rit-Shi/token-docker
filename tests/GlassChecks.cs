@@ -9,6 +9,9 @@ class GlassChecks {
         var snapshot=ConsoleSnapshot.Parse(Data.Json().DeserializeObject(json));Check(snapshot.Usage.Tokens==130);Check(snapshot.Usage.DisplayCost=="¥0.30");Check(snapshot.Usage.CnyCost==.30m);Check(snapshot.Balance.Value=="¥14.00");
         bool rejected=false;try{ConsoleSnapshot.Parse(Data.Json().DeserializeObject(json.Replace(DateTime.Now.ToString("yyyy-MM-dd"),"2000-01-01")));}catch{rejected=true;}Check(rejected);
         var face=new BarFace{Horizontal=true};Check(face.Hit(new Point(60,60))==1);Check(face.Hit(new Point(200,60))==2);Check(face.Hit(new Point(310,35))==3);face.Horizontal=false;Check(face.Hit(new Point(66,85))==1);Check(face.Hit(new Point(66,230))==2);
+        var soloDs=new BarFace{Horizontal=true,ShowGlm=false};Check(soloDs.TargetWidth==238);Check(soloDs.Hit(new Point(60,60))==2);soloDs.Horizontal=false;Check(soloDs.TargetHeight==208);Check(soloDs.Hit(new Point(66,85))==2);
+        var soloGlm=new BarFace{ShowDeepSeek=false};Check(soloGlm.TargetHeight==181);Check(soloGlm.Hit(new Point(50,230))==3);
+        var empty=new BarFace{ShowGlm=false,ShowDeepSeek=false};Check(empty.TargetHeight==123);Check(empty.Hit(new Point(50,85))==3);empty.Horizontal=true;Check(empty.TargetWidth==139);
         double distance;Check(GlassBar.Nearest(new Rect(-1920,0,1920,1080),-122,200,132,out distance)=="right"&&distance==0);
         Check(GlassBar.Nearest(new Rect(0,0,1920,1080),-7.5,100,99,out distance,.75)=="left"&&distance==0);
         Check(GlassBar.Nearest(new Rect(0,0,1920,1080),200,-5.25,258,out distance,.75)=="top"&&distance==0);
