@@ -143,6 +143,12 @@ class GlassBar : Window {
             live.Add(row);
         }
 
+        if (live.Count == 0) {
+            face.Primary = new Row { Id = "glm", Label = "未配置", Meter = new Meter("", "打开设置", "右键浮条或托盘图标，选择「连接设置」填写 API Key") };
+            face.Rows = new List<Row>();
+            return;
+        }
+
         Row primary = null;
         var wanted = Catalog.Get(config.Primary ?? "glm");
         foreach (var row in live) if (wanted != null && row.Id == wanted.Id) primary = row;
