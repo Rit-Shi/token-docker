@@ -24,20 +24,22 @@ class GlassBar : Window {
     readonly DispatcherTimer refresh = new DispatcherTimer();
     readonly DispatcherTimer spring = new DispatcherTimer();
     readonly Popup hover = new Popup { AllowsTransparency = true, StaysOpen = true };
+    readonly Dictionary<string, Row> rows = new Dictionary<string, Row>(StringComparer.OrdinalIgnoreCase);
     Config config = new Config();
     DeepSeekConsole console;
+    MiMoConsole mimo;
     WinForms.NotifyIcon tray;
     System.Drawing.Icon trayIcon;
     bool busy, dragging, moved, preview;
     Point start, origin;
     double velocity;
+    Rect lastArea = Rect.Empty;
     string state = "未刷新";
+    int cycle;
 
     public GlassBar(bool demo = false) {
         preview = demo;
         Title = "Token Bar · Glass";
-        Width = 132 * UiScale;
-        Height = 306 * UiScale;
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
         Background = Brushes.Transparent;
@@ -47,12 +49,11 @@ class GlassBar : Window {
 
         if (!demo) LoadConfig();
         face.Limits = Limits.From(config);
-        face.Width = 132;
-        face.Height = 306;
         compact.Child = face;
         Content = compact;
         face.Light = config.Theme == "light";
         face.Edge = config.Edge ?? "right";
+        RebuildRows();
         Orient(face.Edge);
 
         refresh.Interval = TimeSpan.FromMinutes(5);
@@ -78,6 +79,7 @@ class GlassBar : Window {
             refresh.Stop();
             spring.Stop();
             if (console != null) console.Shutdown();
+            if (mimo != null) mimo.Shutdown();
             if (!preview) Save();
         };
     }
@@ -103,7 +105,110 @@ class GlassBar : Window {
         if (preview) return;
         refresh.Start();
         if (config.ConsoleConnected) await ConnectConsole(false);
+        if (config.MimoConnected) await ConnectMimo(false);
         await Refresh();
+    }
+
+    // ---- layout -------------------------------------------------------
+
+    void Layout() {
+        double width = face.Horizontal ? face.ContentWidth : 132;
+        double height = face.Horizontal ? 118 : face.ContentHeight;
+        face.Width = width;
+        face.Height = height;
+        Width = width * UiScale;
+        Height = height * UiScale;
+        face.InvalidateMeasure();
+        face.InvalidateVisual();
+    }
+
+    void Orient(string edge) {
+        bool horizontal = edge == "top";
+        bool changed = face.Horizontal != horizontal;
+        double center = Left + Width / 2;
+        face.Horizontal = horizontal;
+        Layout();
+        if (changed && !double.IsNaN(center) && !double.IsNaN(Left)) Left = center - Width / 2;
+    }
+
+    void RebuildRows() {
+        var live = new List<Row>();
+        foreach (var info in Catalog.All) {
+            if (!Catalog.Configured(info, config)) continue;
+            Row row;
+            if (!rows.TryGetValue(info.Id, out row)) {
+                row = new Row { Id = info.Id, Label = info.Label, Meter = new Meter(info.Label, "待刷新", "稍后自动刷新") };
+                rows[info.Id] = row;
+            }
+            live.Add(row);
+        }
+
+        Row primary = null;
+        var wanted = Catalog.Get(config.Primary ?? "glm");
+        foreach (var row in live) if (wanted != null && row.Id == wanted.Id) primary = row;
+        if (primary == null) foreach (var row in live) if (row.Id == "glm") primary = row;
+        if (primary == null) foreach (var row in live) if (row.Meter.FiveHour.HasValue || row.Meter.Weekly.HasValue) { primary = row; break; }
+        if (primary == null && live.Count > 0) primary = live[0];
+
+        var rest = new List<Row>();
+        foreach (var row in live) if (row != primary) rest.Add(row);
+
+        face.Primary = primary;
+        if (config.Display == "cycle" && rest.Count > 0) {
+            cycle = ((cycle % rest.Count) + rest.Count) % rest.Count;
+            face.Rows = new List<Row> { rest[cycle] };
+        } else {
+            face.Rows = rest;
+        }
+    }
+
+    Row GetRow(string id) {
+        Row row;
+        if (rows.TryGetValue(id, out row)) return row;
+        return null;
+    }
+
+    // ---- mouse --------------------------------------------------------
+
+    Point Pointer() {
+        var p = WinForms.Control.MousePosition;
+        var source = PresentationSource.FromVisual(this);
+        return source != null
+            ? source.CompositionTarget.TransformFromDevice.Transform(new Point(p.X, p.Y))
+            : new Point(p.X, p.Y);
+    }
+
+    Rect Area() {
+        var p = WinForms.Control.MousePosition;
+        var work = WinForms.Screen.FromPoint(p).WorkingArea;
+        var source = PresentationSource.FromVisual(this);
+        var transform = source == null ? Matrix.Identity : source.CompositionTarget.TransformFromDevice;
+        lastArea = new Rect(transform.Transform(new Point(work.Left, work.Top)), transform.Transform(new Point(work.Right, work.Bottom)));
+        return lastArea;
+    }
+
+    void Clamp() {
+        var area = Area();
+        Left = Math.Max(area.Left - 10 * UiScale, Math.Min(Left, area.Right - Width + 10 * UiScale));
+        Top = Math.Max(area.Top - 7 * UiScale, Math.Min(Top, area.Bottom - Height));
+    }
+
+    // Glue a docked bar to its edge after the content height changed, without resampling the mouse.
+    void Dock() {
+        if (lastArea.IsEmpty) return;
+        if (face.Edge == "left") Left = lastArea.Left - 10 * UiScale;
+        else if (face.Edge == "right") Left = lastArea.Right - Width + 10 * UiScale;
+        else if (face.Edge == "top") Top = lastArea.Top - 7 * UiScale;
+        Left = Math.Max(lastArea.Left - 10 * UiScale, Math.Min(Left, lastArea.Right - Width + 10 * UiScale));
+        Top = Math.Max(lastArea.Top - 7 * UiScale, Math.Min(Top, lastArea.Bottom - Height));
+    }
+
+    public static string Nearest(Rect area, double x, double y, double width, out double distance, double scale = 1) {
+        double l = Math.Abs(x + 10 * scale - area.Left),
+               r = Math.Abs(x + width - 10 * scale - area.Right),
+               t = Math.Abs(y + 7 * scale - area.Top);
+        distance = Math.Min(l, Math.Min(r, t));
+        return distance == t ? "top" : distance == l ? "left" : "right";
     }
 
     void OnMouseDown(object sender, MouseButtonEventArgs e) {
@@ -146,85 +251,12 @@ class GlassBar : Window {
         int hit = face.Hit(e.GetPosition(face));
         if (hit == 3) ToggleTheme();
         else if (hit == 4) Menu();
-        else ShowHover(hit);
-    }
-
-    void CreateTray() {
-        using (var stream = typeof(GlassBar).Assembly.GetManifestResourceStream("tokenbar.ico"))
-        using (var original = new System.Drawing.Icon(stream)) {
-            trayIcon = (System.Drawing.Icon)original.Clone();
-        }
-        Icon = Imaging.CreateBitmapSourceFromHIcon(trayIcon.Handle, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
-        tray = new WinForms.NotifyIcon { Icon = trayIcon, Text = "Token Bar", Visible = true };
-        var menu = new WinForms.ContextMenuStrip();
-        menu.Items.Add("显示浮条", null, (s, e) => { Show(); WindowState = WindowState.Normal; Activate(); });
-        menu.Items.Add("隐藏浮条", null, (s, e) => { hover.IsOpen = false; Hide(); });
-        menu.Items.Add("连接设置", null, (s, e) => { Show(); Settings(); });
-        menu.Items.Add("刷新", null, async (s, e) => await Refresh());
-        menu.Items.Add("切换深色 / 浅色", null, (s, e) => ToggleTheme());
-        menu.Items.Add(new WinForms.ToolStripSeparator());
-        menu.Items.Add("退出", null, (s, e) => Close());
-        tray.ContextMenuStrip = menu;
-        tray.DoubleClick += (s, e) => { Show(); WindowState = WindowState.Normal; Activate(); };
-    }
-
-    void DisposeTray() {
-        if (tray != null) {
-            tray.Visible = false;
-            var menu = tray.ContextMenuStrip;
-            tray.Dispose();
-            if (menu != null) menu.Dispose();
-            tray = null;
-        }
-        if (trayIcon != null) {
-            trayIcon.Dispose();
-            trayIcon = null;
-        }
-    }
-
-    Point Pointer() {
-        var p = WinForms.Control.MousePosition;
-        var source = PresentationSource.FromVisual(this);
-        return source != null
-            ? source.CompositionTarget.TransformFromDevice.Transform(new Point(p.X, p.Y))
-            : new Point(p.X, p.Y);
-    }
-
-    Rect Area() {
-        var p = WinForms.Control.MousePosition;
-        var work = WinForms.Screen.FromPoint(p).WorkingArea;
-        var source = PresentationSource.FromVisual(this);
-        var transform = source == null ? Matrix.Identity : source.CompositionTarget.TransformFromDevice;
-        return new Rect(transform.Transform(new Point(work.Left, work.Top)), transform.Transform(new Point(work.Right, work.Bottom)));
-    }
-
-    void Clamp() {
-        var area = Area();
-        Left = Math.Max(area.Left - 10 * UiScale, Math.Min(Left, area.Right - Width + 10 * UiScale));
-        Top = Math.Max(area.Top - 7 * UiScale, Math.Min(Top, area.Bottom - Height));
-    }
-
-    public static string Nearest(Rect area, double x, double y, double width, out double distance, double scale = 1) {
-        double l = Math.Abs(x + 10 * scale - area.Left),
-               r = Math.Abs(x + width - 10 * scale - area.Right),
-               t = Math.Abs(y + 7 * scale - area.Top);
-        distance = Math.Min(l, Math.Min(r, t));
-        return distance == t ? "top" : distance == l ? "left" : "right";
-    }
-
-    void Orient(string edge) {
-        bool horizontal = edge == "top";
-        if (face.Horizontal != horizontal) {
-            double center = Left + Width / 2;
-            face.Horizontal = horizontal;
-            face.Width = horizontal ? 344 : 132;
-            face.Height = horizontal ? 118 : 306;
-            Width = face.Width * UiScale;
-            Height = face.Height * UiScale;
-            if (!double.IsNaN(center)) Left = center - Width / 2;
-        }
-        face.InvalidateMeasure();
-        face.InvalidateVisual();
+        else if (hit >= 100 && config.Display == "cycle") {
+            cycle++;
+            RebuildRows();
+            Layout();
+            Dock();
+        } else ShowHover(hit);
     }
 
     void Magnet(bool snap) {
@@ -264,6 +296,337 @@ class GlassBar : Window {
         }
     }
 
+    // ---- tray ---------------------------------------------------------
+
+    void CreateTray() {
+        using (var stream = typeof(GlassBar).Assembly.GetManifestResourceStream("tokenbar.ico"))
+        using (var original = new System.Drawing.Icon(stream)) {
+            trayIcon = (System.Drawing.Icon)original.Clone();
+        }
+        Icon = Imaging.CreateBitmapSourceFromHIcon(trayIcon.Handle, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+        tray = new WinForms.NotifyIcon { Icon = trayIcon, Text = "Token Bar", Visible = true };
+        var menu = new WinForms.ContextMenuStrip();
+        menu.Items.Add("显示浮条", null, (s, e) => { Show(); WindowState = WindowState.Normal; Activate(); });
+        menu.Items.Add("隐藏浮条", null, (s, e) => { hover.IsOpen = false; Hide(); });
+        menu.Items.Add("连接设置", null, (s, e) => { Show(); Settings(); });
+        menu.Items.Add("刷新", null, async (s, e) => await Refresh());
+        menu.Items.Add("连接 DeepSeek 控制台", null, async (s, e) => await ConnectConsole(true));
+        menu.Items.Add("连接 MiMo 控制台", null, async (s, e) => await ConnectMimo(true));
+        menu.Items.Add("切换深色 / 浅色", null, (s, e) => ToggleTheme());
+        menu.Items.Add(new WinForms.ToolStripSeparator());
+        menu.Items.Add("退出", null, (s, e) => Close());
+        tray.ContextMenuStrip = menu;
+        tray.DoubleClick += (s, e) => { Show(); WindowState = WindowState.Normal; Activate(); };
+    }
+
+    void DisposeTray() {
+        if (tray != null) {
+            tray.Visible = false;
+            var menu = tray.ContextMenuStrip;
+            tray.Dispose();
+            if (menu != null) menu.Dispose();
+            tray = null;
+        }
+        if (trayIcon != null) {
+            trayIcon.Dispose();
+            trayIcon = null;
+        }
+    }
+
+    // ---- menus --------------------------------------------------------
+
+    void Menu() {
+        hover.IsOpen = false;
+        var menu = new ContextMenu();
+        Action<string, Action> add = (label, action) => {
+            var item = new MenuItem { Header = label };
+            item.Click += (s, e) => action();
+            menu.Items.Add(item);
+        };
+        add("连接设置", () => Settings());
+        add("刷新", async () => await Refresh());
+        add("连接 DeepSeek 控制台", async () => await ConnectConsole(true));
+        add("连接 MiMo 控制台", async () => await ConnectMimo(true));
+        add(config.Display == "cycle" ? "切换为逐行列表" : "切换为轮换显示", () => ToggleDisplay());
+        add(face.Light ? "切换 Dark" : "切换 Light", () => ToggleTheme());
+        add(Topmost ? "取消置顶" : "保持置顶", () => Topmost = !Topmost);
+        menu.Items.Add(new Separator());
+        add("退出", () => Close());
+        menu.PlacementTarget = face;
+        menu.IsOpen = true;
+    }
+
+    void ToggleDisplay() {
+        config.Display = config.Display == "cycle" ? "list" : "cycle";
+        cycle = 0;
+        RebuildRows();
+        Layout();
+        Dock();
+        Save();
+    }
+
+    void ToggleTheme() {
+        face.Light = !face.Light;
+        face.InvalidateVisual();
+        hover.IsOpen = false;
+        Save();
+    }
+
+    // ---- settings -----------------------------------------------------
+
+    void Settings() {
+        hover.IsOpen = false;
+        var window = new SettingsWindow(this, config, face.Light, Icon, () => {
+            face.Limits = Limits.From(config);
+            RebuildRows();
+            Layout();
+            Dock();
+            Save();
+            var ignored = Refresh();
+        }, async id => {
+            if (id == "mimo") await ConnectMimo(true);
+        });
+        window.ShowDialog();
+    }
+
+    // ---- consoles -----------------------------------------------------
+
+    async Task ConnectConsole(bool show) {
+        try {
+            config.ConsoleConnected = true;
+            var row = GetRow("deepseek");
+            if (row == null) {
+                row = new Row { Id = "deepseek", Label = "DEEPSEEK" };
+                rows["deepseek"] = row;
+            }
+            row.Meter = new Meter("DeepSeek", "待登录", "请在控制台窗口登录 DeepSeek");
+            row.Usage = null;
+            if (console == null) {
+                console = new DeepSeekConsole(this,
+                    snapshot => {
+                        row.Meter = snapshot.Balance;
+                        row.Usage = snapshot.Usage;
+                        state = "控制台已同步 " + DateTime.Now.ToString("HH:mm");
+                        face.InvalidateVisual();
+                    },
+                    reason => {
+                        row.Usage = null;
+                        if (reason.StartsWith("usage:") && (row.Meter.Value.StartsWith("¥") || row.Meter.Value.StartsWith("$")))
+                            row.Meter.Detail += "\n用量查询失败：" + reason;
+                        else
+                            row.Meter = new Meter("DeepSeek", reason.StartsWith("auth:") ? "待登录" : "读取失败", reason);
+                        face.InvalidateVisual();
+                    });
+                console.ShowActivated = show;
+                console.Show();
+                await console.Start();
+                if (!show) console.Hide();
+            } else {
+                if (show) {
+                    console.Show();
+                    console.Activate();
+                }
+                await console.Refresh();
+            }
+            RebuildRows();
+            Layout();
+            Dock();
+            Save();
+        } catch {
+            if (console != null) {
+                console.Shutdown();
+                console = null;
+            }
+            config.ConsoleConnected = false;
+            var row = GetRow("deepseek");
+            if (row != null) row.Meter = new Meter("DeepSeek", "未连接", "控制台组件未能启动。请确认已安装 Microsoft Edge WebView2 Runtime。");
+            if (show) MessageBox.Show(this, "控制台组件未能启动。请确认已安装 Microsoft Edge WebView2 Runtime。", "控制台连接");
+        }
+        face.InvalidateVisual();
+    }
+
+    async Task ConnectMimo(bool show) {
+        try {
+            if (mimo == null) {
+                mimo = new MiMoConsole(this,
+                    meter => {
+                        var row = GetRow("mimo");
+                        if (row != null) row.Meter = meter;
+                        state = "MiMo 已同步 " + DateTime.Now.ToString("HH:mm");
+                        face.InvalidateVisual();
+                    },
+                    reason => {
+                        var row = GetRow("mimo");
+                        if (row != null) row.Meter = new Meter("MiMo", "待登录", reason);
+                        face.InvalidateVisual();
+                    });
+                mimo.ShowActivated = show;
+                mimo.Show();
+                await mimo.Start();
+                if (!show) mimo.Hide();
+            } else {
+                if (show) {
+                    mimo.Show();
+                    mimo.Activate();
+                }
+                await mimo.Fetch();
+            }
+            if (!preview) config.MimoConnected = true;
+            RebuildRows();
+            Layout();
+            Dock();
+            Save();
+        } catch (Exception error) {
+            MessageBox.Show(this, error.Message, "MiMo 控制台");
+        }
+        face.InvalidateVisual();
+    }
+
+    // ---- refresh ------------------------------------------------------
+
+    async Task<Meter> FetchMimo() {
+        if (mimo == null) throw new Exception("请在设置中连接 MiMo 控制台");
+        await mimo.Fetch();
+        var row = GetRow("mimo");
+        if (row == null) throw new Exception("MiMo 未返回数据");
+        return row.Meter;
+    }
+
+    async Task Refresh() {
+        if (busy) return;
+        busy = true;
+        face.Busy = true;
+        RebuildRows();
+        Layout();
+        face.InvalidateVisual();
+
+        var jobs = new List<Task>();
+        foreach (var info in Catalog.All) {
+            if (!Catalog.Configured(info, config)) continue;
+            jobs.Add(RefreshOne(info));
+        }
+        try {
+            await Task.WhenAll(jobs);
+        } catch {
+            state = "刷新失败，请检查网络或 Key";
+        }
+
+        var deep = GetRow("deepseek");
+        if (deep != null && !config.ConsoleConnected) {
+            try { deep.Usage = TodayUsage.Load(config.UsageFile); } catch { deep.Usage = null; }
+        }
+        state = "更新于 " + DateTime.Now.ToString("HH:mm") + " · 每 5 分钟刷新";
+        RebuildRows();
+        Layout();
+        Dock();
+        busy = false;
+        face.Busy = false;
+        face.InvalidateVisual();
+        if (hover.IsOpen) ShowHover(face.Hover);
+    }
+
+    async Task RefreshOne(ProviderInfo info) {
+        Row row;
+        if (!rows.TryGetValue(info.Id, out row)) return;
+        // DeepSeek's console session replaces the API-key balance and adds today's usage.
+        if (info.Id == "deepseek" && config.ConsoleConnected && console != null) {
+            try { await console.Refresh(); } catch { }
+            return;
+        }
+        try {
+            row.Meter = await Fetch.Run(info, config, FetchMimo);
+        } catch (Exception error) {
+            row.Meter = new Meter(info.Label, "读取失败", error.Message);
+        }
+        face.InvalidateVisual();
+    }
+
+    // ---- hover --------------------------------------------------------
+
+    void ShowHover(int hit) {
+        if (dragging || hit < 0) {
+            hover.IsOpen = false;
+            return;
+        }
+        Row row = null;
+        bool isPrimary = false;
+        if (hit == 1 && face.Primary != null) {
+            row = face.Primary;
+            isPrimary = true;
+        } else if (hit >= 100) {
+            int index = hit - 100;
+            if (index < 0 || index >= face.Rows.Count) {
+                hover.IsOpen = false;
+                return;
+            }
+            row = face.Rows[index];
+        } else if (hit == 3) {
+            hover.IsOpen = false;
+            hover.Child = Card("切换深色 / 浅色");
+            Place(hit);
+            return;
+        } else if (hit == 4) {
+            hover.IsOpen = false;
+            hover.Child = Card("连接、刷新与退出");
+            Place(hit);
+            return;
+        } else {
+            hover.IsOpen = false;
+            hover.Child = Card("拖动浮条 · 靠近上 / 左 / 右边缘吸附\n" + state);
+            Place(hit);
+            return;
+        }
+        hover.IsOpen = false;
+        hover.Child = Card(Details(row, isPrimary));
+        Place(hit);
+    }
+
+    void Place(int hit) {
+        hover.PlacementTarget = face;
+        hover.Placement = face.Horizontal ? PlacementMode.Bottom : face.Edge == "right" ? PlacementMode.Left : PlacementMode.Right;
+        hover.HorizontalOffset = 8;
+        double offset = 35 * UiScale;
+        if (hit >= 100) offset = (face.Primary != null ? 142 : 0) * UiScale + (hit - 100) * 54 * UiScale + 8;
+        hover.VerticalOffset = face.Horizontal ? 8 : offset;
+        hover.IsOpen = true;
+    }
+
+    Border Card(string text) {
+        return new Border {
+            Background = Paint.B(face.Light ? "#F3F7FBFF" : "#F0202D40"),
+            BorderBrush = Paint.B(face.Light ? "#FFE0E7F0" : "#FF455570"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(18),
+            Padding = new Thickness(18),
+            Child = new TextBlock {
+                Text = text,
+                Foreground = face.Ink,
+                FontSize = 12,
+                FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"),
+                MaxWidth = 300,
+                TextWrapping = TextWrapping.Wrap
+            }
+        };
+    }
+
+    string Details(Row row, bool isPrimary) {
+        var lines = new List<string>();
+        lines.Add(row.Label + (isPrimary ? " · 主额度" : ""));
+        lines.Add("");
+        lines.Add(row.Meter.Detail);
+        if (row.Usage != null) {
+            lines.Add("");
+            lines.Add(BarFace.SpendText(row));
+            lines.Add("Token " + (row.Usage.Tokens.HasValue ? row.Usage.Tokens.Value.ToString("N0") : "暂无数据"));
+            if (!string.IsNullOrEmpty(row.Usage.Source)) lines.Add(row.Usage.Source);
+        }
+        lines.Add("");
+        lines.Add(state);
+        return string.Join("\n", lines);
+    }
+
+    // ---- persistence --------------------------------------------------
+
     bool Save() {
         if (preview) return true;
         config.X = (int)Left;
@@ -281,295 +644,58 @@ class GlassBar : Window {
         }
     }
 
-    void ToggleTheme() {
-        face.Light = !face.Light;
-        face.InvalidateVisual();
-        hover.IsOpen = false;
-        Save();
-    }
-
-    void Menu() {
-        hover.IsOpen = false;
-        var menu = new ContextMenu();
-        Action<string, Action> add = (label, action) => {
-            var item = new MenuItem { Header = label };
-            item.Click += (s, e) => action();
-            menu.Items.Add(item);
-        };
-        add("连接设置", () => Settings());
-        add("连接 DeepSeek 控制台", async () => await ConnectConsole(true));
-        add("刷新", async () => await Refresh());
-        add(face.Light ? "切换 Dark" : "切换 Light", () => ToggleTheme());
-        add(Topmost ? "取消置顶" : "保持置顶", () => Topmost = !Topmost);
-        menu.Items.Add(new Separator());
-        add("退出", () => Close());
-        menu.PlacementTarget = face;
-        menu.IsOpen = true;
-    }
-
-    async Task ConnectConsole(bool show) {
-        try {
-            config.ConsoleConnected = true;
-            face.Usage = null;
-            face.Balance = new Meter("DeepSeek", "待登录", "请在控制台窗口登录 DeepSeek");
-            if (console == null) {
-                console = new DeepSeekConsole(this,
-                    snapshot => {
-                        face.Balance = snapshot.Balance;
-                        face.Usage = snapshot.Usage;
-                        state = "控制台已同步 " + DateTime.Now.ToString("HH:mm");
-                        face.InvalidateVisual();
-                    },
-                    reason => {
-                        face.Usage = null;
-                        if (reason.StartsWith("usage:") && (face.Balance.Value.StartsWith("¥") || face.Balance.Value.StartsWith("$")))
-                            face.Balance.Detail += "\n用量查询失败：" + reason;
-                        else
-                            face.Balance = new Meter("DeepSeek", reason.StartsWith("auth:") ? "待登录" : "读取失败", reason);
-                        face.InvalidateVisual();
-                    });
-                console.ShowActivated = show;
-                console.Show();
-                await console.Start();
-                if (!show) console.Hide();
-            } else {
-                if (show) {
-                    console.Show();
-                    console.Activate();
-                }
-                await console.Refresh();
-            }
-            Save();
-        } catch {
-            if (console != null) {
-                console.Shutdown();
-                console = null;
-            }
-            face.Balance = new Meter("DeepSeek", "未连接", "控制台组件未能启动。请确认已安装 Microsoft Edge WebView2 Runtime。");
-            if (show) MessageBox.Show(this, face.Balance.Detail, "控制台连接");
-        }
-        face.InvalidateVisual();
-    }
-
-    void ShowHover(int hit) {
-        if (dragging || hit < 0) {
-            hover.IsOpen = false;
-            return;
-        }
-        string text =
-            hit == 1 ? "ZHIPU · PLAN\n\n外圈 / 5 小时   " + Data.Pct(face.Plan.FiveHour) + " 剩余\n内圈 / 周额度   "
-                + Data.Pct(face.Plan.Weekly) + " 剩余\n\n" + face.Plan.Detail
-            : hit == 2 ? "DEEPSEEK · 今日累计\n\n余额   " + face.Balance.Value + "\n当日花费   " + face.Spend
-                + "\nToken 总消耗   " + (face.Usage != null && face.Usage.Tokens.HasValue ? face.Usage.Tokens.Value.ToString("N0") : "暂无数据")
-                + "\n\n" + (face.Usage == null ? "余额接口不含当日花费与 token 用量。\n请在设置中连接用量数据。" : face.Usage.Source + "\n" + face.Usage.UpdatedAt)
-                + "\n\n" + face.Balance.Detail
-            : hit == 3 ? "切换深色 / 浅色"
-            : hit == 4 ? "连接、刷新与退出"
-            : "拖动浮条 · 靠近上 / 左 / 右边缘吸附\n" + state;
-
-        var box = new Border {
-            Background = Paint.B(face.Light ? "#F3F7FBFF" : "#F0202D40"),
-            BorderBrush = Paint.B(face.Light ? "#FFE0E7F0" : "#FF455570"),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(18),
-            Padding = new Thickness(18),
-            Child = new TextBlock {
-                Text = text,
-                Foreground = face.Ink,
-                FontSize = 12,
-                FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"),
-                MaxWidth = 300,
-                TextWrapping = TextWrapping.Wrap
-            }
-        };
-        hover.Child = box;
-        hover.PlacementTarget = face;
-        hover.Placement = face.Horizontal ? PlacementMode.Bottom : face.Edge == "right" ? PlacementMode.Left : PlacementMode.Right;
-        hover.HorizontalOffset = 8;
-        hover.VerticalOffset = face.Horizontal ? 8 : hit == 2 ? 140 * UiScale : 35 * UiScale;
-        hover.IsOpen = true;
-    }
-
-    async Task Refresh() {
-        if (busy) return;
-        busy = true;
-        face.Busy = true;
-        if (face.Usage != null && face.Usage.Date != DateTime.Now.ToString("yyyy-MM-dd")) face.Usage = null;
-        face.InvalidateVisual();
-
-        var jobs = new List<Task>();
-        jobs.Add(Update(true, config.Glm, config.International));
-        if (!config.ConsoleConnected) jobs.Add(Update(false, config.DeepSeek, false));
-        else if (console != null) jobs.Add(console.Refresh());
-        try {
-            await Task.WhenAll(jobs);
-        } catch {
-            state = "刷新失败，请重连控制台";
-        }
-
-        if (!config.ConsoleConnected) {
-            try { face.Usage = TodayUsage.Load(config.UsageFile); } catch { face.Usage = null; }
-        }
-        state = "更新于 " + DateTime.Now.ToString("HH:mm") + " · 每 5 分钟刷新";
-        busy = false;
-        face.Busy = false;
-        face.InvalidateVisual();
-        if (hover.IsOpen) ShowHover(face.Hover);
-    }
-
-    async Task Update(bool plan, string key, bool international) {
-        Meter result;
-        if (string.IsNullOrEmpty(key)) {
-            result = new Meter(plan ? "GLM" : "DeepSeek", "未连接", "请在设置中填写 API Key");
-        } else {
-            try {
-                string url = plan
-                    ? (international ? "https://api.z.ai/api/monitor/usage/quota/limit" : "https://open.bigmodel.cn/api/monitor/usage/quota/limit")
-                    : "https://api.deepseek.com/user/balance";
-                var json = await Data.Fetch(url, key, !plan);
-                result = plan ? Data.Glm(json) : Data.Deep(json);
-            } catch {
-                result = new Meter(plan ? "GLM" : "DeepSeek", "读取失败", "请检查网络、Key 或套餐地区后刷新");
-            }
-        }
-        if (plan) face.Plan = result;
-        else face.Balance = result;
-    }
-
-    void Settings() {
-        var win = new Window {
-            Title = "Token Bar · 连接",
-            ShowInTaskbar = false,
-            Icon = Icon,
-            Width = 450,
-            Height = 620,
-            ResizeMode = ResizeMode.NoResize,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Owner = this,
-            Topmost = true,
-            Background = Paint.B(face.Light ? "#F4F7FC" : "#202C3D")
-        };
-        var panel = new StackPanel { Margin = new Thickness(24) };
-        // Scrolls instead of clipping when the system font or DPI leaves less room than expected.
-        win.Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-        Action<string> label = text => panel.Children.Add(new TextBlock {
-            Text = text, Foreground = face.Ink, Margin = new Thickness(0, 8, 0, 5)
-        });
-
-        label("GLM 个人套餐 API Key");
-        var glm = new PasswordBox { Password = config.Glm, Padding = new Thickness(6) };
-        panel.Children.Add(glm);
-
-        label("DeepSeek API Key");
-        var deep = new PasswordBox { Password = config.DeepSeek, Padding = new Thickness(6) };
-        panel.Children.Add(deep);
-
-        var region = new CheckBox {
-            Content = "GLM 使用国际站 Z.ai",
-            IsChecked = config.International,
-            Foreground = face.Ink,
-            Margin = new Thickness(0, 12, 0, 8)
-        };
-        panel.Children.Add(region);
-
-        label("今日用量文件（可选；当前余额接口不提供）");
-        var usage = new TextBox { Text = config.UsageFile, Padding = new Thickness(6) };
-        panel.Children.Add(usage);
-
-        label("配色阈值");
-        panel.Children.Add(new TextBlock {
-            Text = "额度低于警戒线时圆环由绿转黄；今日花费达到预警转黄、达到告警转红，超过告警为深红。",
-            Foreground = face.Muted,
-            FontSize = 11,
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 0, 0, 4)
-        });
-
-        var current = face.Limits;
-        label("额度警戒线（剩余 %，默认 50）");
-        var quotaWarn = new TextBox { Text = current.QuotaWarn.ToString("0.##", CultureInfo.InvariantCulture), Padding = new Thickness(6) };
-        panel.Children.Add(quotaWarn);
-
-        label("今日花费预警 / 告警（元，默认 2.5 / 5）");
-        var costRow = new Grid();
-        costRow.ColumnDefinitions.Add(new ColumnDefinition());
-        costRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
-        costRow.ColumnDefinitions.Add(new ColumnDefinition());
-        var costWarn = new TextBox { Text = current.CostWarn.ToString("0.##", CultureInfo.InvariantCulture), Padding = new Thickness(6) };
-        var costDanger = new TextBox { Text = current.CostDanger.ToString("0.##", CultureInfo.InvariantCulture), Padding = new Thickness(6) };
-        Grid.SetColumn(costWarn, 0);
-        Grid.SetColumn(costDanger, 2);
-        costRow.Children.Add(costWarn);
-        costRow.Children.Add(costDanger);
-        panel.Children.Add(costRow);
-
-        var reset = new Button {
-            Content = "恢复默认阈值",
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 10, 0, 0),
-            Padding = new Thickness(10, 3, 10, 3)
-        };
-        reset.Click += (s, e) => {
-            quotaWarn.Text = Limits.DefaultQuotaWarn.ToString("0.##", CultureInfo.InvariantCulture);
-            costWarn.Text = Limits.DefaultCostWarn.ToString("0.##", CultureInfo.InvariantCulture);
-            costDanger.Text = Limits.DefaultCostDanger.ToString("0.##", CultureInfo.InvariantCulture);
-        };
-        panel.Children.Add(reset);
-
-        var button = new Button { Content = "保存并刷新", Margin = new Thickness(0, 20, 0, 0), Padding = new Thickness(8) };
-        button.Click += async (s, e) => {
-            Limits updated;
-            string error;
-            if (!Limits.TryParse(quotaWarn.Text, costWarn.Text, costDanger.Text, out updated, out error)) {
-                MessageBox.Show(win, error, "配色阈值");
-                return;
-            }
-            config.Glm = glm.Password.Trim();
-            config.DeepSeek = deep.Password.Trim();
-            config.International = region.IsChecked == true;
-            config.UsageFile = usage.Text.Trim();
-            updated.StoreTo(config);
-            face.Limits = updated;
-            face.InvalidateVisual();
-            Save();
-            win.Close();
-            await Refresh();
-        };
-        panel.Children.Add(button);
-
-        win.ShowDialog();
-    }
-
     static void Check(bool ok) { if (!ok) throw new Exception("Check failed"); }
 
     static void Preview() {
         var face = new BarFace();
-        face.Plan = new Meter("GLM", "", "示例") { FiveHour = 82, Weekly = 43 };
-        face.Balance = new Meter("DeepSeek", "¥28.60", "示例");
-        face.Usage = new TodayUsage { Date = DateTime.Now.ToString("yyyy-MM-dd"), Cost = .86m, Tokens = 124800, Currency = "CNY", Source = "示例数据" };
-        face.Measure(new Size(132, 306));
-        face.Arrange(new Rect(0, 0, 132, 306));
+        face.Primary = new Row { Id = "glm", Label = "ZHIPU", Meter = new Meter("GLM", "", "") { FiveHour = 82, Weekly = 43 } };
+        face.Rows.Add(new Row {
+            Id = "deepseek", Label = "DEEPSEEK",
+            Meter = new Meter("DeepSeek", "¥28.60", ""),
+            Usage = new TodayUsage { Date = DateTime.Now.ToString("yyyy-MM-dd"), Cost = .86m, Tokens = 124800, Currency = "CNY", Source = "示例数据" }
+        });
+        face.Rows.Add(new Row { Id = "kimi", Label = "KIMI", Meter = new Meter("Kimi", "¥49.59", "") });
+        face.Rows.Add(new Row { Id = "minimax", Label = "MINIMAX", Meter = new Meter("MiniMax", "5h 76%", "") { FiveHour = 76, Weekly = 61 } });
+        face.Rows.Add(new Row { Id = "mimo", Label = "MIMO", Meter = new Meter("MiMo", "月 91%", "") { Weekly = 91 } });
+        face.Width = 132;
+        face.Height = face.ContentHeight;
+        face.Measure(new Size(132, face.ContentHeight));
+        face.Arrange(new Rect(0, 0, 132, face.ContentHeight));
 
         var visual = new DrawingVisual();
         using (var d = visual.RenderOpen()) {
-            d.DrawRectangle(new LinearGradientBrush(Paint.C("#26364C"), Paint.C("#91A1B9"), 30), null, new Rect(0, 0, 700, 420));
-            Paint.Text(d, "COMPACT / GLASS", 20, Brushes.White, new Point(28, 20), true);
-            Paint.Text(d, "示例数据 · 0–5 元连续渐变 · 超过 5 元深红", 11, Brushes.White, new Point(29, 52));
+            d.DrawRectangle(new LinearGradientBrush(Paint.C("#26364C"), Paint.C("#91A1B9"), 30), null, new Rect(0, 0, 420, 620));
+            Paint.Text(d, "供应商列表 / 主额度环", 18, Brushes.White, new Point(24, 16), true);
+            Paint.Text(d, "GLM 主环 + DeepSeek / Kimi / MiniMax / MiMo 逐行", 11, Brushes.White, new Point(24, 44));
 
-            decimal[] costs = { 0m, 2.5m, 5m, 6.8m };
-            for (int i = 0; i < 4; i++) {
-                face.Light = i % 2 == 1;
-                face.Usage.Cost = costs[i];
-                d.PushTransform(new TranslateTransform(32 + i * 164, 96));
+            double[] x = { 30, 220 };
+            for (int i = 0; i < 2; i++) {
+                face.Light = i == 1;
+                d.PushTransform(new TranslateTransform(x[i], 70));
                 d.PushTransform(new ScaleTransform(UiScale, UiScale));
                 face.Render(d);
                 d.Pop();
                 d.Pop();
-                Paint.Text(d, "¥" + costs[i].ToString("0.00"), 12, Brushes.White, new Point(66 + i * 164, 341), true);
             }
-            Paint.Text(d, "竖向 99×230  /  顶部横向 258×89   ·   显示大小随系统缩放变化", 11, Brushes.White, new Point(29, 388));
+            double bottom = 70 + face.ContentHeight * UiScale + 14;
+            Paint.Text(d, "深色", 11, Brushes.White, new Point(60, bottom), true);
+            Paint.Text(d, "浅色", 11, Brushes.White, new Point(250, bottom), true);
+
+            var horizontal = new BarFace { Horizontal = true, Light = false, Primary = face.Primary };
+            horizontal.Rows.Add(face.Rows[0]);
+            horizontal.Rows.Add(face.Rows[1]);
+            horizontal.Width = horizontal.ContentWidth;
+            horizontal.Height = 118;
+            horizontal.Measure(new Size(horizontal.Width, 118));
+            horizontal.Arrange(new Rect(0, 0, horizontal.Width, 118));
+            Paint.Text(d, "顶部横向：吸附到屏幕上边缘时", 11, Brushes.White, new Point(24, bottom + 34));
+            d.PushTransform(new TranslateTransform(24, bottom + 52));
+            d.PushTransform(new ScaleTransform(UiScale, UiScale));
+            horizontal.Render(d);
+            d.Pop();
+            d.Pop();
         }
-        var bitmap = new RenderTargetBitmap(1400, 840, 192, 192, PixelFormats.Pbgra32);
+        var bitmap = new RenderTargetBitmap(420, 620, 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(visual);
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
@@ -589,7 +715,7 @@ class GlassBar : Window {
                 Check(Nearest(new Rect(0, 0, 1920, 1080), 500, -7, 132, out delta) == "top" && delta == 0);
                 Preview();
                 File.WriteAllText(Path.Combine(Root, "glass-test.txt"),
-                    "PASS: vector icons, dark/light render, nested rings, top/left docking geometry, continuous colors, configurable thresholds. Live transparency and pointer animation require desktop verification.");
+                    "PASS: vector icons, dark/light render, nested rings, top/left docking geometry, continuous colors, configurable thresholds, provider rows and parsers. Live transparency and pointer animation require desktop verification.");
             } catch (Exception e) {
                 File.WriteAllText(Path.Combine(Root, "glass-test.txt"), e.ToString());
                 Environment.ExitCode = 1;

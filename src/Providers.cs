@@ -26,6 +26,18 @@ class Config {
     public int X=-1, Y=30; public string Theme="dark", Edge="right", UsageFile=""; public bool ConsoleConnected=false;
     // Colour thresholds; null keeps the historical defaults (see Limits).
     public double? QuotaWarn, CostWarn, CostDanger;
+    // Additional providers. Mode: auto | balance | plan.
+    public string Kimi="", MiniMax="";
+    public string KimiMode="auto", MiniMaxMode="auto";
+    public bool KimiInternational=false, MiniMaxInternational=false;
+    public bool MimoConnected=false;
+    // Display: list | cycle. Hidden holds comma separated provider ids.
+    public string Display="list", Primary="glm", Hidden="";
+    public bool IsHidden(string id){
+        if(string.IsNullOrWhiteSpace(Hidden)) return false;
+        foreach(var part in Hidden.Split(',')) if(string.Equals(part.Trim(),id,StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
 }
 static class Data {
     public static JavaScriptSerializer Json() { return new JavaScriptSerializer(); }
@@ -69,6 +81,158 @@ static class Data {
         }
         if(values.Count==0) throw new Exception("接口未返回有效余额");
         return new Meter("DeepSeek",string.Join(" / ",values),string.Join("\n",lines)+(Get(result,"is_available") is bool && !(bool)Get(result,"is_available")?"\n当前不可用于 API 调用":""));
+    }
+    public static string Money(string currency,double amount) {
+        string number=amount.ToString("0.00",CultureInfo.InvariantCulture);
+        return currency=="CNY"?"¥"+number:currency=="USD"?"$"+number:(currency==""?"":currency+" ")+number;
+    }
+    static double? Share(object remaining,object limit) {
+        var left=Num(remaining); var total=Num(limit);
+        return left.HasValue&&total.HasValue&&total.Value>0?(double?)Math.Max(0,Math.Min(100,left.Value/total.Value*100)):null;
+    }
+    static double? RatioLeft(object entry) {
+        var used=Num(Get(entry,"used_ratio"));
+        if(used.HasValue) return Math.Max(0,Math.Min(100,100-used.Value*100));
+        return Share(Get(entry,"remaining"),Get(entry,"limit"));
+    }
+    public static string IsoReset(object value,string prefix) {
+        string text=Str(value); DateTime time;
+        if(!DateTime.TryParse(text,CultureInfo.InvariantCulture,DateTimeStyles.AdjustToUniversal|DateTimeStyles.AssumeUniversal,out time)) return "";
+        return prefix+time.ToLocalTime().ToString("MM-dd HH:mm",CultureInfo.InvariantCulture);
+    }
+    static string ResetMs(object value,string prefix) {
+        var n=Num(value); if(!n.HasValue) return "";
+        try { return prefix+new DateTime(1970,1,1,0,0,0,DateTimeKind.Utc).AddMilliseconds(n.Value).ToLocalTime().ToString("MM-dd HH:mm"); } catch { return ""; }
+    }
+    static void ApiOk(object result) {
+        var baseResponse=Get(result,"base_resp");
+        var code=Num(Get(baseResponse,"status_code"));
+        if(code.HasValue&&code.Value!=0) throw new Exception(Str(Get(baseResponse,"status_msg")));
+    }
+    public static Meter KimiBalance(object result,bool international) {
+        var data=Get(result,"data");
+        var available=Num(Get(data,"available_balance"));
+        if(!available.HasValue) throw new Exception("接口未返回可用余额");
+        string currency=international?"USD":"CNY"; var lines=new List<string>();
+        lines.Add("代金券余额与现金余额之和");
+        var voucher=Num(Get(data,"voucher_balance"));
+        var cash=Num(Get(data,"cash_balance"));
+        if(voucher.HasValue) lines.Add("代金券 "+Money(currency,voucher.Value));
+        if(cash.HasValue) lines.Add("现金 "+Money(currency,cash.Value));
+        if(available.Value<=0) lines.Add("余额不足，API 调用会被拒绝");
+        lines.Add("更新于 "+DateTime.Now.ToString("HH:mm:ss"));
+        return new Meter("Kimi",Money(currency,available.Value),string.Join("\n",lines));
+    }
+    public static Meter KimiUsage(object result) {
+        double? five=null, week=null, month=null; var lines=new List<string>();
+        var ratio=Get(result,"usages") as Dictionary<string,object>;
+        if(ratio!=null) {
+            five=RatioLeft(Get(ratio,"limit_5h"));
+            week=RatioLeft(Get(ratio,"limit_7d"));
+            month=RatioLeft(Get(ratio,"limit_month_total"));
+            string fiveReset=IsoReset(Get(Get(ratio,"limit_5h"),"reset_time"),"5 小时重置 ");
+            if(fiveReset!="") lines.Add(fiveReset);
+            string weekReset=IsoReset(Get(Get(ratio,"limit_7d"),"reset_time"),"周重置 ");
+            if(weekReset!="") lines.Add(weekReset);
+        }
+        var limits=Get(result,"limits") as object[];
+        if(limits!=null) foreach(var item in limits) {
+            double? minutes=Num(Get(Get(item,"window"),"duration"));
+            bool weekly=minutes.HasValue&&minutes.Value>=10080;
+            var detail=Get(item,"detail");
+            double? left=Share(Get(detail,"remaining"),Get(detail,"limit"));
+            if(left.HasValue) { if(weekly) week=week??left; else five=five??left; }
+            string reset=IsoReset(Get(detail,"resetTime"),weekly?"周重置 ":"5 小时重置 ");
+            if(reset!="") lines.Add(reset);
+        }
+        var legacy=Get(result,"usage");
+        if(legacy!=null) {
+            double? left=Share(Get(legacy,"remaining"),Get(legacy,"limit"));
+            if(left.HasValue) week=week??left;
+            string reset=IsoReset(Get(legacy,"resetTime"),"周重置 ");
+            if(reset!="") lines.Add(reset);
+        }
+        if(month.HasValue) lines.Add("月额度剩余 "+Pct(month));
+        if(!five.HasValue&&!week.HasValue&&!month.HasValue) throw new Exception("接口未返回可识别的订阅额度");
+        string value=five.HasValue?"5h "+Pct(five):week.HasValue?"周 "+Pct(week):"月 "+Pct(month);
+        lines.Insert(0,"Kimi Code 订阅额度");
+        return new Meter("Kimi",value,string.Join("\n",lines)) {FiveHour=five,Weekly=week};
+    }
+    public static Meter MiniMaxPlan(object result) {
+        ApiOk(result);
+        var items=Get(result,"model_remains") as object[];
+        if(items==null||items.Length==0) throw new Exception("接口未返回套餐额度");
+        object general=null;
+        foreach(var item in items) if(Str(Get(item,"model_name")).ToLowerInvariant()=="general") { general=item; break; }
+        if(general==null) general=items[0];
+        double? five=Num(Get(general,"current_interval_remaining_percent"));
+        double? week=Num(Get(general,"current_weekly_remaining_percent"));
+        var lines=new List<string>();
+        string fiveReset=ResetMs(Get(general,"end_time"),"5 小时重置 ");
+        string weekReset=ResetMs(Get(general,"weekly_end_time"),"周重置 ");
+        if(five.HasValue) lines.Add("5 小时剩余 "+Pct(five));
+        if(fiveReset!="") lines.Add(fiveReset);
+        if(week.HasValue) lines.Add("周额度剩余 "+Pct(week));
+        if(weekReset!="") lines.Add(weekReset);
+        if(items.Length>1) foreach(var item in items) {
+            if(item==general) continue;
+            string name=Str(Get(item,"model_name"));
+            double? other=Num(Get(item,"current_interval_remaining_percent"));
+            double? otherWeek=Num(Get(item,"current_weekly_remaining_percent"));
+            if(other.HasValue||otherWeek.HasValue) lines.Add(name+" 5h "+Pct(other)+" / 周 "+Pct(otherWeek));
+        }
+        if(!five.HasValue&&!week.HasValue) throw new Exception("接口未返回可识别的套餐额度");
+        string value=five.HasValue?"5h "+Pct(five):"周 "+Pct(week);
+        return new Meter("MiniMax",value,string.Join("\n",lines)) {FiveHour=five,Weekly=week};
+    }
+    public static Meter MiniMaxBalance(object result) {
+        ApiOk(result);
+        var data=Get(result,"data")??result;
+        var available=Num(Get(data,"available_amount"));
+        if(!available.HasValue) throw new Exception("接口未返回可用余额");
+        string currency="CNY"; var lines=new List<string>();
+        var cash=Num(Get(data,"cash_balance"));
+        var voucher=Num(Get(data,"voucher_balance"));
+        var credit=Num(Get(data,"credit_balance"));
+        if(cash.HasValue) lines.Add("现金 "+Money(currency,cash.Value));
+        if(voucher.HasValue) lines.Add("代金券 "+Money(currency,voucher.Value));
+        if(credit.HasValue) lines.Add("赠送 "+Money(currency,credit.Value));
+        if(available.Value<=0) lines.Add("余额不足，API 调用会被拒绝");
+        lines.Add("更新于 "+DateTime.Now.ToString("HH:mm:ss"));
+        return new Meter("MiniMax",Money(currency,available.Value),string.Join("\n",lines));
+    }
+    public static Meter Mimo(object balance,object usage,object detail) {
+        var balanceData=Get(balance,"data");
+        var usageData=Get(usage,"data");
+        var detailData=Get(detail,"data");
+        string currency=Str(Get(balanceData,"currency")); if(currency=="") currency="CNY";
+        double? amount=Num(Get(balanceData,"balance"));
+        double? used=Num(Get(Get(usageData,"monthUsage"),"percent"));
+        double? month=used.HasValue?(double?)Math.Max(0,Math.Min(100,100-used.Value*100)):null;
+        var lines=new List<string>();
+        var items=Get(Get(usageData,"monthUsage"),"items") as object[];
+        if(items!=null) foreach(var item in items) {
+            string name=Str(Get(item,"name"));
+            var usedTokens=Num(Get(item,"used")); var limit=Num(Get(item,"limit"));
+            if(name=="month_total_token"&&usedTokens.HasValue&&limit.HasValue&&limit.Value>0) {
+                lines.Add("本月 token "+usedTokens.Value.ToString("N0")+" / "+limit.Value.ToString("N0"));
+                if(!month.HasValue) month=Math.Max(0,100-usedTokens.Value/limit.Value*100);
+            }
+        }
+        if(month.HasValue) lines.Add("月度额度剩余 "+Pct(month));
+        string plan=Str(Get(detailData,"planName")); if(plan=="") plan=Str(Get(detailData,"planCode"));
+        if(plan!="") lines.Add("套餐 "+plan);
+        string end=Str(Get(detailData,"currentPeriodEnd"));
+        if(end!="") lines.Add("周期至 "+end);
+        if(Get(detailData,"expired") is bool && (bool)Get(detailData,"expired")) lines.Add("套餐已过期");
+        if(amount.HasValue) {
+            lines.Add("余额 "+Money(currency,amount.Value));
+            var cash=Num(Get(balanceData,"cashBalance")); if(cash.HasValue) lines.Add("现金 "+Money(currency,cash.Value));
+            var gift=Num(Get(balanceData,"giftBalance")); if(gift.HasValue) lines.Add("赠金 "+Money(currency,gift.Value));
+        }
+        if(!month.HasValue&&!amount.HasValue) throw new Exception("接口未返回可识别的额度");
+        string value=month.HasValue?"月 "+Pct(month):Money(currency,amount.Value);
+        return new Meter("MiMo",value,string.Join("\n",lines)) {Weekly=month};
     }
     public static async Task<object> Fetch(string url,string key,bool bearer) {
         using(var handler=new HttpClientHandler { AllowAutoRedirect=false })

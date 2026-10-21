@@ -6,6 +6,7 @@
 # Credentials and browser sessions, wherever they occur.
 settings.dat
 console-profile/
+mimo-profile/
 *.WebView2/
 .env
 .env.*

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Windows;
 using System.Windows.Media;
@@ -17,58 +18,94 @@ class TodayUsage {
     }
 }
 
+// One provider's state as shown in the bar.
+class Row {
+    public string Id, Label;
+    public Meter Meter = new Meter("", "未配置", "请在设置中连接");
+    public TodayUsage Usage;
+}
+
 // Draws the bar itself. Coordinates are logical units; GlassBar scales the whole visual.
 class BarFace : FrameworkElement {
     static readonly Geometry Zhipu = Paint.Icon("zhipu"), DeepSeek = Paint.Icon("deepseek");
 
-    public bool Light, Horizontal;
-    public Meter Plan = new Meter("GLM", "未配置", "请在设置中连接 GLM 套餐");
-    public Meter Balance = new Meter("DeepSeek", "未配置", "请在设置中连接 DeepSeek");
-    public TodayUsage Usage;
+    const double TopHeight = 142;   // primary quota block
+    const double RowHeight = 54;
+    const double FooterHeight = 54;
+
+    public bool Light, Horizontal, Busy;
     public Limits Limits = new Limits();
     public string Edge = "right";
     public double Pull;
     public int Hover = -1;
-    public bool Busy;
+    public Row Primary;
+    public List<Row> Rows = new List<Row>();
 
     public Brush Ink { get { return Paint.B(Light ? "#20314A" : "#F0F5FF"); } }
     public Brush Muted { get { return Paint.B(Light ? "#5E718A" : "#9CADC7"); } }
+    Brush Track { get { return Paint.B(Light ? "#284A657C" : "#445F718B"); } }
+    Brush Divider { get { return Paint.B(Light ? "#30466182" : "#405D7696"); } }
 
-    bool Today { get { return Usage != null && Usage.Date == DateTime.Now.ToString("yyyy-MM-dd"); } }
-
-    public string Spend {
-        get {
-            if (!Today) return "—";
-            if (Usage.DisplayCost != null) return Usage.DisplayCost;
-            if (Usage.Cost.HasValue) return (Usage.Currency == "CNY" ? "¥" : "$") + Usage.Cost.Value.ToString("0.00");
-            return "—";
-        }
+    public double ContentHeight {
+        get { return (Primary != null ? TopHeight : 0) + Rows.Count * RowHeight + FooterHeight; }
     }
 
-    public Brush SpendInk {
-        get {
-            decimal? cost = Today ? (Usage.CnyCost ?? (Usage.Currency == "CNY" ? Usage.Cost : null)) : null;
-            return new SolidColorBrush(Paint.Expense(cost, Limits.CostWarn, Limits.CostDanger));
-        }
+    public double ContentWidth {
+        get { return Horizontal ? 118 + Rows.Count * 86 + 54 : 132; }
+    }
+
+    static bool IsToday(TodayUsage usage) {
+        return usage != null && usage.Date == DateTime.Now.ToString("yyyy-MM-dd");
+    }
+
+    public static string SpendText(Row row) {
+        if (!IsToday(row.Usage)) return "今日 —";
+        if (row.Usage.DisplayCost != null) return "今日 " + row.Usage.DisplayCost;
+        if (row.Usage.Cost.HasValue)
+            return "今日 " + (row.Usage.Currency == "CNY" ? "¥" : "$") + row.Usage.Cost.Value.ToString("0.00");
+        return "今日 —";
+    }
+
+    public Brush SpendInk(Row row) {
+        decimal? cost = null;
+        if (IsToday(row.Usage)) cost = row.Usage.CnyCost ?? (row.Usage.Currency == "CNY" ? row.Usage.Cost : null);
+        return new SolidColorBrush(Paint.Expense(cost, Limits.CostWarn, Limits.CostDanger));
+    }
+
+    bool HasWindows(Row row) {
+        return row.Meter.FiveHour.HasValue || row.Meter.Weekly.HasValue;
+    }
+
+    // Icon or a letter tile for providers without a bundled vector logo.
+    void Glyph(DrawingContext d, string id, Rect r, Brush ink) {
+        if (id == "glm") { Paint.Logo(d, Zhipu, ink, r); return; }
+        if (id == "deepseek") { Paint.Logo(d, DeepSeek, Paint.B(Light ? "#466AFF" : "#91ADFF"), r); return; }
+        string letter = id == "kimi" ? "K" : id == "minimax" ? "M" : "Mi";
+        d.DrawRoundedRectangle(null, new Pen(Muted, 1.1), r, r.Width * .3, r.Width * .3);
+        Paint.Centered(d, letter, r.Height * .52, ink, r);
     }
 
     public int Hit(Point p) {
-        if (Horizontal) {
-            if (p.Y < 18) return 0;
-            if (p.X < 115) return 1;
-            if (p.X < 282) return 2;
-            return p.Y < 58 ? 3 : 4;
-        }
-        if (p.Y < 37) return 0;
-        if (p.Y < 135) return 1;
-        if (p.Y < 260) return 2;
-        if (p.Y < 303) return p.X < 66 ? 3 : 4;
+        if (Horizontal) return HitHorizontal(p);
+        double top = Primary != null ? TopHeight : 0;
+        if (p.Y < top) return p.Y < 37 ? 0 : 1;
+        int index = (int)((p.Y - top) / RowHeight);
+        if (index >= 0 && index < Rows.Count && p.Y < Height - FooterHeight + 8) return 100 + index;
+        if (p.Y >= Height - FooterHeight + 8) return p.X < 66 ? 3 : 4;
         return 0;
     }
 
-    public Geometry Shell() {
-        double radius = 27, left = 10, top = 7, width = 112, height = 293;
-        double right = left + width, bottom = top + height;
+    int HitHorizontal(Point p) {
+        if (p.Y < 18) return 0;
+        if (p.X < 118) return 1;
+        if (p.X > Width - 46) return p.Y < 58 ? 3 : 4;
+        int index = (int)((p.X - 118) / 86);
+        return index < Rows.Count ? 100 + index : 0;
+    }
+
+    public Geometry Shell(double height) {
+        double radius = 27, left = 10, top = 7, width = 112, bottom = height - 6;
+        double right = left + width;
         var geometry = new StreamGeometry();
         using (var c = geometry.Open()) {
             c.BeginFigure(new Point(left + radius, top), true, true);
@@ -94,7 +131,9 @@ class BarFace : FrameworkElement {
             RenderHorizontal(d);
             return;
         }
-        var shell = Shell();
+        double height = !double.IsNaN(Height) && Height > 0 ? Height : ContentHeight;
+        var shell = Shell(height);
+
         var glass = new LinearGradientBrush();
         glass.StartPoint = new Point(0, 0);
         glass.EndPoint = new Point(1, 1);
@@ -114,97 +153,132 @@ class BarFace : FrameworkElement {
         var grip = new Pen(Muted, 2) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
         d.DrawLine(grip, new Point(55, 23), new Point(77, 23));
 
-        Brush track = Paint.B(Light ? "#284A657C" : "#445F718B");
-        Paint.Arc(d, new Point(66, 77), 35, Plan.FiveHour, track, Limits.QuotaWarn);
-        Paint.Arc(d, new Point(66, 77), 27, Plan.Weekly, track, Limits.QuotaWarn);
-        Paint.Logo(d, Zhipu, Ink, new Rect(49, 60, 34, 34));
-
-        Paint.Text(d, "ZHIPU", 9, Muted, new Point(48, 115), true);
-        d.DrawLine(new Pen(Paint.B(Light ? "#30466182" : "#405D7696"), 1), new Point(31, 135), new Point(101, 135));
-
-        Paint.Logo(d, DeepSeek, Paint.B(Light ? "#466AFF" : "#91ADFF"), new Rect(46, 148, 40, 32));
-        Paint.Text(d, "余额", 9, Muted, new Point(26, 195));
-        Paint.Text(d, Balance.Value, Balance.Value.Length > 9 ? 10 : 14, Ink, new Point(52, 189), true, 65);
-        Paint.Text(d, "今日", 9, Muted, new Point(26, 222));
-        Paint.Text(d, Spend, 12, SpendInk, new Point(53, 216), true, 65);
-        if (Usage == null) Paint.Text(d, "用量待接入", 8, Muted, new Point(43, 241), false, 70);
-
-        d.DrawLine(new Pen(Paint.B(Light ? "#30466182" : "#405D7696"), 1), new Point(31, 260), new Point(101, 260));
-        DrawThemeGlyph(d);
-        for (int i = 0; i < 3; i++) d.DrawEllipse(Muted, null, new Point(84, 277 + i * 6), 1.3, 1.3);
+        if (Primary != null) DrawPrimary(d);
+        for (int i = 0; i < Rows.Count; i++) DrawRow(d, i, Primary != null ? TopHeight : 0);
+        DrawFooter(d, height);
         if (Busy) d.DrawEllipse(Paint.B("#74E0BD"), null, new Point(95, 25), 2.5, 2.5);
-        DrawPull(d);
+        DrawPull(d, height);
     }
 
-    // Theme switch uses vector sun/moon rather than font glyphs.
-    void DrawThemeGlyph(DrawingContext d) {
+    void DrawPrimary(DrawingContext d) {
+        var meter = Primary.Meter;
+        if (HasWindows(Primary)) {
+            Paint.Arc(d, new Point(66, 77), 35, meter.FiveHour, Track, Limits.QuotaWarn);
+            Paint.Arc(d, new Point(66, 77), 27, meter.Weekly, Track, Limits.QuotaWarn);
+            Glyph(d, Primary.Id, new Rect(48, 59, 36, 36), Ink);
+            Paint.Centered(d, Primary.Label, 9, Muted, new Rect(10, 114, 112, 12));
+        } else {
+            Glyph(d, Primary.Id, new Rect(44, 48, 44, 44), Ink);
+            Paint.Centered(d, meter.Value, 16, Ink, new Rect(10, 100, 112, 22));
+            Paint.Centered(d, Primary.Label, 9, Muted, new Rect(10, 122, 112, 12));
+        }
+        d.DrawLine(new Pen(Divider, 1), new Point(31, 135), new Point(101, 135));
+    }
+
+    void DrawRow(DrawingContext d, int index, double top) {
+        var row = Rows[index];
+        double y = top + index * RowHeight;
+        if (index > 0) d.DrawLine(new Pen(Divider, 1), new Point(31, y), new Point(101, y));
+
+        var center = new Point(28, y + RowHeight / 2 - 4);
+        if (HasWindows(row)) {
+            Paint.Arc(d, center, 16, row.Meter.FiveHour, Track, Limits.QuotaWarn);
+            Paint.Arc(d, center, 13, row.Meter.Weekly, Track, Limits.QuotaWarn);
+            Glyph(d, row.Id, new Rect(center.X - 9, center.Y - 9, 18, 18), Ink);
+        } else {
+            Glyph(d, row.Id, new Rect(center.X - 11, center.Y - 11, 22, 22), Ink);
+        }
+
+        Paint.Text(d, row.Label, 8, Muted, new Point(50, y + 7), true, 60);
+        Paint.Text(d, row.Meter.Value, 12, Ink, new Point(50, y + 22), true, 66);
+        if (row.Usage != null) Paint.Text(d, SpendText(row), 8, SpendInk(row), new Point(50, y + 40), false, 66);
+    }
+
+    void DrawFooter(DrawingContext d, double height) {
+        d.DrawLine(new Pen(Divider, 1), new Point(31, height - FooterHeight + 8), new Point(101, height - FooterHeight + 8));
+        double y = height - 23;
+
+        // Theme switch uses vector sun/moon rather than font glyphs.
         if (Light) {
-            d.DrawEllipse(null, new Pen(Muted, 1.4), new Point(45, 283), 4, 4);
+            d.DrawEllipse(null, new Pen(Muted, 1.4), new Point(45, y), 4, 4);
             for (int i = 0; i < 8; i++) {
                 double angle = i * Math.PI / 4;
                 d.DrawLine(new Pen(Muted, 1),
-                    new Point(45 + 7 * Math.Cos(angle), 283 + 7 * Math.Sin(angle)),
-                    new Point(45 + 9 * Math.Cos(angle), 283 + 9 * Math.Sin(angle)));
+                    new Point(45 + 7 * Math.Cos(angle), y + 7 * Math.Sin(angle)),
+                    new Point(45 + 9 * Math.Cos(angle), y + 9 * Math.Sin(angle)));
             }
         } else {
-            d.DrawEllipse(Muted, null, new Point(45, 283), 7, 7);
-            d.DrawEllipse(Paint.B("#FF243247"), null, new Point(48, 280), 6, 6);
+            d.DrawEllipse(Muted, null, new Point(45, y), 7, 7);
+            d.DrawEllipse(Paint.B("#FF243247"), null, new Point(48, y - 3), 6, 6);
         }
+        for (int i = 0; i < 3; i++) d.DrawEllipse(Muted, null, new Point(84, y + i * 6 - 6), 1.3, 1.3);
     }
 
     // The pull hint stretches as the bar approaches a screen edge.
-    void DrawPull(DrawingContext d) {
+    void DrawPull(DrawingContext d, double height) {
         if (Math.Abs(Pull) <= .05) return;
-        double strength = Math.Min(1, Math.Abs(Pull) / 8);
-        var pen = new Pen(new SolidColorBrush(Color.FromArgb((byte)(70 + 150 * strength), 140, 199, 255)), 1.4);
-        var geometry = new StreamGeometry();
-        using (var c = geometry.Open()) {
-            if (Edge == "left") {
-                c.BeginFigure(new Point(10, 115), false, false);
-                c.BezierTo(new Point(10 - 7 * strength, 139), new Point(10 - 7 * strength, 195), new Point(10, 222), true, false);
-            } else if (Edge == "right") {
-                c.BeginFigure(new Point(122, 115), false, false);
-                c.BezierTo(new Point(122 + 7 * strength, 139), new Point(122 + 7 * strength, 195), new Point(122, 222), true, false);
-            } else {
+        if (Edge == "top") {
+            double strength = Math.Min(1, Math.Abs(Pull) / 8);
+            var pen = new Pen(Paint.B("#BCA0D4FF"), 1.5);
+            var geometry = new StreamGeometry();
+            using (var c = geometry.Open()) {
                 c.BeginFigure(new Point(35, 7), false, false);
                 c.BezierTo(new Point(49, 7 - 6 * strength), new Point(83, 7 - 6 * strength), new Point(97, 7), true, false);
             }
+            d.DrawGeometry(null, pen, geometry);
+            return;
         }
-        d.DrawGeometry(null, pen, geometry);
+        double weight = Math.Min(1, Math.Abs(Pull) / 8);
+        double start = height * .36, middle = height * .54, end = height * .72;
+        var sidePen = new Pen(new SolidColorBrush(Color.FromArgb((byte)(70 + 150 * weight), 140, 199, 255)), 1.4);
+        var path = new StreamGeometry();
+        using (var c = path.Open()) {
+            if (Edge == "left") {
+                c.BeginFigure(new Point(10, start), false, false);
+                c.BezierTo(new Point(10 - 7 * weight, middle - 7), new Point(10 - 7 * weight, middle + 7), new Point(10, end), true, false);
+            } else {
+                c.BeginFigure(new Point(122, start), false, false);
+                c.BezierTo(new Point(122 + 7 * weight, middle - 7), new Point(122 + 7 * weight, middle + 7), new Point(122, end), true, false);
+            }
+        }
+        d.DrawGeometry(null, sidePen, path);
     }
 
     void RenderHorizontal(DrawingContext d) {
-        var rect = new Rect(7, 7, 330, 104);
+        double width = ContentWidth;
+        var rect = new Rect(7, 7, width - 14, 104);
         var gradient = new LinearGradientBrush(
             Paint.C(Light ? "#DDF8FCFF" : "#DF253247"),
             Paint.C(Light ? "#BCE3EFFA" : "#BC111E30"), 65);
         d.DrawRoundedRectangle(gradient, new Pen(Paint.B(Light ? "#EFFFFFFF" : "#707F96B3"), 1), rect, 27, 27);
 
-        Brush track = Paint.B(Light ? "#284A657C" : "#445F718B");
-        Paint.Arc(d, new Point(64, 59), 35, Plan.FiveHour, track, Limits.QuotaWarn);
-        Paint.Arc(d, new Point(64, 59), 27, Plan.Weekly, track, Limits.QuotaWarn);
-        Paint.Logo(d, Zhipu, Ink, new Rect(47, 42, 34, 34));
-
-        d.DrawLine(new Pen(Paint.B(Light ? "#30466182" : "#405D7696"), 1), new Point(113, 30), new Point(113, 88));
-        Paint.Logo(d, DeepSeek, Paint.B(Light ? "#466AFF" : "#91ADFF"), new Rect(126, 40, 38, 34));
-        Paint.Text(d, "余额", 10, Muted, new Point(174, 35));
-        Paint.Text(d, Balance.Value, 14, Ink, new Point(209, 30), true, 78);
-        Paint.Text(d, "今日", 10, Muted, new Point(174, 63));
-        Paint.Text(d, Spend, 13, SpendInk, new Point(209, 59), true, 78);
-
-        d.DrawEllipse(null, new Pen(Muted, 1.3), new Point(310, 39), 6, 6);
-        for (int i = 0; i < 3; i++) d.DrawEllipse(Muted, null, new Point(304 + i * 6, 77), 1.2, 1.2);
-        DrawHorizontalPull(d);
-    }
-
-    void DrawHorizontalPull(DrawingContext d) {
-        if (Math.Abs(Pull) <= .05) return;
-        var pen = new Pen(Paint.B("#BCA0D4FF"), 1.5);
-        var geometry = new StreamGeometry();
-        using (var c = geometry.Open()) {
-            c.BeginFigure(new Point(112, 7), false, false);
-            c.BezierTo(new Point(142, 7 - Math.Abs(Pull)), new Point(202, 7 - Math.Abs(Pull)), new Point(232, 7), true, false);
+        if (Primary != null && HasWindows(Primary)) {
+            Paint.Arc(d, new Point(64, 59), 35, Primary.Meter.FiveHour, Track, Limits.QuotaWarn);
+            Paint.Arc(d, new Point(64, 59), 27, Primary.Meter.Weekly, Track, Limits.QuotaWarn);
+            Glyph(d, Primary.Id, new Rect(47, 42, 34, 34), Ink);
+        } else if (Primary != null) {
+            Glyph(d, Primary.Id, new Rect(42, 38, 40, 40), Ink);
         }
-        d.DrawGeometry(null, pen, geometry);
+
+        d.DrawLine(new Pen(Divider, 1), new Point(112, 30), new Point(112, 88));
+        for (int i = 0; i < Rows.Count; i++) {
+            var row = Rows[i];
+            double x = 118 + i * 86;
+            var center = new Point(x + 16, 32);
+            if (HasWindows(row)) {
+                Paint.Arc(d, center, 13, row.Meter.FiveHour, Track, Limits.QuotaWarn);
+                Paint.Arc(d, center, 10, row.Meter.Weekly, Track, Limits.QuotaWarn);
+                Glyph(d, row.Id, new Rect(center.X - 7, center.Y - 7, 14, 14), Ink);
+            } else {
+                Glyph(d, row.Id, new Rect(center.X - 9, center.Y - 9, 18, 18), Ink);
+            }
+            Paint.Text(d, row.Label, 8, Muted, new Point(x + 34, 22), true, 48);
+            Paint.Text(d, row.Meter.Value, 11, Ink, new Point(x + 4, 48), true, 78);
+            if (row.Usage != null) Paint.Text(d, SpendText(row), 8, SpendInk(row), new Point(x + 4, 68), false, 78);
+        }
+
+        d.DrawEllipse(null, new Pen(Muted, 1.3), new Point(width - 30, 39), 6, 6);
+        for (int i = 0; i < 3; i++) d.DrawEllipse(Muted, null, new Point(width - 46 + i * 6, 77), 1.2, 1.2);
+        if (Busy) d.DrawEllipse(Paint.B("#74E0BD"), null, new Point(width - 30, 20), 2.5, 2.5);
     }
 }

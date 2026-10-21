@@ -49,8 +49,18 @@ static class Paint {
         var formatted = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, size, ink);
 #pragma warning restore 0618
         formatted.MaxTextWidth = max;
+        formatted.MaxLineCount = 1;
         formatted.Trimming = TextTrimming.CharacterEllipsis;
         d.DrawText(formatted, at);
+    }
+
+    public static void Centered(DrawingContext d, string text, double size, Brush ink, Rect area) {
+        var typeface = new Typeface(new FontFamily("Segoe UI, Microsoft YaHei UI"), FontStyles.Normal,
+            FontWeights.SemiBold, FontStretches.Normal);
+#pragma warning disable 0618
+        var formatted = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, size, ink);
+#pragma warning restore 0618
+        d.DrawText(formatted, new Point(area.X + (area.Width - formatted.Width) / 2, area.Y + (area.Height - formatted.Height) / 2));
     }
 
     public static Geometry Icon(string name) {
