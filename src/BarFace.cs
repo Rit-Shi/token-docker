@@ -25,6 +25,7 @@ class BarFace : FrameworkElement {
     public Meter Plan = new Meter("GLM", "未配置", "请在设置中连接 GLM 套餐");
     public Meter Balance = new Meter("DeepSeek", "未配置", "请在设置中连接 DeepSeek");
     public TodayUsage Usage;
+    public Limits Limits = new Limits();
     public string Edge = "right";
     public double Pull;
     public int Hover = -1;
@@ -47,7 +48,7 @@ class BarFace : FrameworkElement {
     public Brush SpendInk {
         get {
             decimal? cost = Today ? (Usage.CnyCost ?? (Usage.Currency == "CNY" ? Usage.Cost : null)) : null;
-            return new SolidColorBrush(Paint.Expense(cost));
+            return new SolidColorBrush(Paint.Expense(cost, Limits.CostWarn, Limits.CostDanger));
         }
     }
 
@@ -114,8 +115,8 @@ class BarFace : FrameworkElement {
         d.DrawLine(grip, new Point(55, 23), new Point(77, 23));
 
         Brush track = Paint.B(Light ? "#284A657C" : "#445F718B");
-        Paint.Arc(d, new Point(66, 77), 35, Plan.FiveHour, track);
-        Paint.Arc(d, new Point(66, 77), 27, Plan.Weekly, track);
+        Paint.Arc(d, new Point(66, 77), 35, Plan.FiveHour, track, Limits.QuotaWarn);
+        Paint.Arc(d, new Point(66, 77), 27, Plan.Weekly, track, Limits.QuotaWarn);
         Paint.Logo(d, Zhipu, Ink, new Rect(49, 60, 34, 34));
 
         Paint.Text(d, "ZHIPU", 9, Muted, new Point(48, 115), true);
@@ -180,8 +181,8 @@ class BarFace : FrameworkElement {
         d.DrawRoundedRectangle(gradient, new Pen(Paint.B(Light ? "#EFFFFFFF" : "#707F96B3"), 1), rect, 27, 27);
 
         Brush track = Paint.B(Light ? "#284A657C" : "#445F718B");
-        Paint.Arc(d, new Point(64, 59), 35, Plan.FiveHour, track);
-        Paint.Arc(d, new Point(64, 59), 27, Plan.Weekly, track);
+        Paint.Arc(d, new Point(64, 59), 35, Plan.FiveHour, track, Limits.QuotaWarn);
+        Paint.Arc(d, new Point(64, 59), 27, Plan.Weekly, track, Limits.QuotaWarn);
         Paint.Logo(d, Zhipu, Ink, new Rect(47, 42, 34, 34));
 
         d.DrawLine(new Pen(Paint.B(Light ? "#30466182" : "#405D7696"), 1), new Point(113, 30), new Point(113, 88));

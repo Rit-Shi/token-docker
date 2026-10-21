@@ -24,6 +24,8 @@ class Config {
     public string Glm="", DeepSeek="";
     public bool International=false;
     public int X=-1, Y=30; public string Theme="dark", Edge="right", UsageFile=""; public bool ConsoleConnected=false;
+    // Colour thresholds; null keeps the historical defaults (see Limits).
+    public double? QuotaWarn, CostWarn, CostDanger;
 }
 static class Data {
     public static JavaScriptSerializer Json() { return new JavaScriptSerializer(); }

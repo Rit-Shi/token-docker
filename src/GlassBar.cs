@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
@@ -45,6 +46,7 @@ class GlassBar : Window {
         ShowInTaskbar = false;
 
         if (!demo) LoadConfig();
+        face.Limits = Limits.From(config);
         face.Width = 132;
         face.Height = 306;
         compact.Child = face;
@@ -440,7 +442,7 @@ class GlassBar : Window {
             ShowInTaskbar = false,
             Icon = Icon,
             Width = 450,
-            Height = 400,
+            Height = 620,
             ResizeMode = ResizeMode.NoResize,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             Owner = this,
@@ -448,7 +450,8 @@ class GlassBar : Window {
             Background = Paint.B(face.Light ? "#F4F7FC" : "#202C3D")
         };
         var panel = new StackPanel { Margin = new Thickness(24) };
-        win.Content = panel;
+        // Scrolls instead of clipping when the system font or DPI leaves less room than expected.
+        win.Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         Action<string> label = text => panel.Children.Add(new TextBlock {
             Text = text, Foreground = face.Ink, Margin = new Thickness(0, 8, 0, 5)
         });
@@ -473,12 +476,61 @@ class GlassBar : Window {
         var usage = new TextBox { Text = config.UsageFile, Padding = new Thickness(6) };
         panel.Children.Add(usage);
 
+        label("配色阈值");
+        panel.Children.Add(new TextBlock {
+            Text = "额度低于警戒线时圆环由绿转黄；今日花费达到预警转黄、达到告警转红，超过告警为深红。",
+            Foreground = face.Muted,
+            FontSize = 11,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 4)
+        });
+
+        var current = face.Limits;
+        label("额度警戒线（剩余 %，默认 50）");
+        var quotaWarn = new TextBox { Text = current.QuotaWarn.ToString("0.##", CultureInfo.InvariantCulture), Padding = new Thickness(6) };
+        panel.Children.Add(quotaWarn);
+
+        label("今日花费预警 / 告警（元，默认 2.5 / 5）");
+        var costRow = new Grid();
+        costRow.ColumnDefinitions.Add(new ColumnDefinition());
+        costRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
+        costRow.ColumnDefinitions.Add(new ColumnDefinition());
+        var costWarn = new TextBox { Text = current.CostWarn.ToString("0.##", CultureInfo.InvariantCulture), Padding = new Thickness(6) };
+        var costDanger = new TextBox { Text = current.CostDanger.ToString("0.##", CultureInfo.InvariantCulture), Padding = new Thickness(6) };
+        Grid.SetColumn(costWarn, 0);
+        Grid.SetColumn(costDanger, 2);
+        costRow.Children.Add(costWarn);
+        costRow.Children.Add(costDanger);
+        panel.Children.Add(costRow);
+
+        var reset = new Button {
+            Content = "恢复默认阈值",
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 10, 0, 0),
+            Padding = new Thickness(10, 3, 10, 3)
+        };
+        reset.Click += (s, e) => {
+            quotaWarn.Text = Limits.DefaultQuotaWarn.ToString("0.##", CultureInfo.InvariantCulture);
+            costWarn.Text = Limits.DefaultCostWarn.ToString("0.##", CultureInfo.InvariantCulture);
+            costDanger.Text = Limits.DefaultCostDanger.ToString("0.##", CultureInfo.InvariantCulture);
+        };
+        panel.Children.Add(reset);
+
         var button = new Button { Content = "保存并刷新", Margin = new Thickness(0, 20, 0, 0), Padding = new Thickness(8) };
         button.Click += async (s, e) => {
+            Limits updated;
+            string error;
+            if (!Limits.TryParse(quotaWarn.Text, costWarn.Text, costDanger.Text, out updated, out error)) {
+                MessageBox.Show(win, error, "配色阈值");
+                return;
+            }
             config.Glm = glm.Password.Trim();
             config.DeepSeek = deep.Password.Trim();
             config.International = region.IsChecked == true;
             config.UsageFile = usage.Text.Trim();
+            updated.StoreTo(config);
+            face.Limits = updated;
+            face.InvalidateVisual();
             Save();
             win.Close();
             await Refresh();
@@ -537,7 +589,7 @@ class GlassBar : Window {
                 Check(Nearest(new Rect(0, 0, 1920, 1080), 500, -7, 132, out delta) == "top" && delta == 0);
                 Preview();
                 File.WriteAllText(Path.Combine(Root, "glass-test.txt"),
-                    "PASS: vector icons, dark/light render, nested rings, top/left docking geometry, continuous colors. Live transparency and pointer animation require desktop verification.");
+                    "PASS: vector icons, dark/light render, nested rings, top/left docking geometry, continuous colors, configurable thresholds. Live transparency and pointer animation require desktop verification.");
             } catch (Exception e) {
                 File.WriteAllText(Path.Combine(Root, "glass-test.txt"), e.ToString());
                 Environment.ExitCode = 1;
