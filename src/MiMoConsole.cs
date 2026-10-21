@@ -64,6 +64,7 @@ class MiMoConsole : Window {
             string header = Join(cookies);
             if (header.IndexOf("api-platform_serviceToken", StringComparison.OrdinalIgnoreCase) < 0) {
                 failure("请先在窗口中登录小米账号");
+                Resume();
                 return;
             }
             var balance = await Get(header, "/api/v1/balance");
@@ -74,9 +75,15 @@ class MiMoConsole : Window {
             Hide();
         } catch (Exception error) {
             failure(error.Message);
+            Resume();
         } finally {
             busy = false;
         }
+    }
+
+    // Keep polling while the window is open so an expired session recovers after a fresh login.
+    void Resume() {
+        if (poll != null && !poll.IsEnabled && IsVisible) poll.Start();
     }
 
     static string Join(IEnumerable<CoreWebView2Cookie> cookies) {
