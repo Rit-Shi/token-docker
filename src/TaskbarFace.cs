@@ -65,7 +65,7 @@ class TaskbarFace : FrameworkElement {
         for (int i = 0; i < Rows.Count; i++) {
             var row = Rows[i];
             double x = 10 + i * TileWidth;
-            if (i > 0) d.DrawLine(new Pen(Paint.B(Light ? "#3830466182" : "#405D7696"), 1), new Point(x - 6, 8), new Point(x - 6, height - 8));
+            if (i > 0) d.DrawLine(new Pen(Paint.B(Light ? "#38304661" : "#405D7696"), 1), new Point(x - 6, 8), new Point(x - 6, height - 8));
             if (i == Hover) d.DrawRoundedRectangle(Paint.B(Light ? "#14203049" : "#22FFFFFF"), null, new Rect(x - 4, 4, TileWidth - 2, height - 8), 10, 10);
 
             Glyph(d, row.Id, new Rect(x, 9, 20, 20), Ink);

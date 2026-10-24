@@ -187,17 +187,25 @@ class GlassBar : Window {
             if (strip != null && strip.IsVisible) strip.Hide();
             return;
         }
-        if (strip == null) {
-            strip = new TaskbarStrip();
-            strip.ProviderClicked = ShowProviderFromStrip;
-            strip.MenuRequested = () => BuildTrayMenu().Show(WinForms.Cursor.Position);
-            strip.PositionChanged = x => { config.TaskbarX = x; Save(); };
+        try {
+            if (strip == null) {
+                strip = new TaskbarStrip();
+                strip.ProviderClicked = ShowProviderFromStrip;
+                strip.MenuRequested = () => BuildTrayMenu().Show(WinForms.Cursor.Position);
+                strip.PositionChanged = x => { config.TaskbarX = x; Save(); };
+            }
+            UpdateStrip();
+            if (!strip.IsVisible) strip.Show();
+            // The window sizes itself to the content, so measure before placing it.
+            strip.UpdateLayout();
+            strip.Place(config.TaskbarX);
+        } catch (Exception error) {
+            // A broken strip must not take the whole widget down with it.
+            state = "任务栏条创建失败：" + error.Message;
+            try { if (strip != null) strip.Close(); } catch { }
+            strip = null;
+            config.Taskbar = false;
         }
-        UpdateStrip();
-        if (!strip.IsVisible) strip.Show();
-        // The window sizes itself to the content, so measure before placing it.
-        strip.UpdateLayout();
-        strip.Place(config.TaskbarX);
     }
 
     void ToggleTaskbar() {
@@ -805,13 +813,21 @@ class GlassBar : Window {
                 Check(Nearest(new Rect(0, 0, 1920, 1080), 500, -7, 132, out delta) == "top" && delta == 0);
                 Preview();
                 File.WriteAllText(Path.Combine(Root, "glass-test.txt"),
-                    "PASS: vector icons, dark/light render, nested rings, top/left docking geometry, continuous colors, configurable thresholds, provider rows and parsers. Live transparency and pointer animation require desktop verification.");
+                    "PASS: vector icons, dark/light render, nested rings, top/left docking geometry, continuous colors, configurable thresholds, provider rows and parsers, taskbar strip. Live transparency and pointer animation require desktop verification.");
             } catch (Exception e) {
                 File.WriteAllText(Path.Combine(Root, "glass-test.txt"), e.ToString());
                 Environment.ExitCode = 1;
             }
             return;
         }
+
+        // A widget should log a bad frame instead of vanishing; crash.txt keeps the stack.
+        app.DispatcherUnhandledException += (s, e) => {
+            LogCrash(e.Exception);
+            e.Handled = true;
+        };
+        AppDomain.CurrentDomain.UnhandledException += (s, e) => LogCrash(e.ExceptionObject as Exception);
+
         bool created;
         using (var mutex = new System.Threading.Mutex(true, "Local\\TokenBar_Desktop_v1", out created)) {
             if (!created) {
@@ -820,5 +836,13 @@ class GlassBar : Window {
             }
             app.Run(new GlassBar());
         }
+    }
+
+    static void LogCrash(Exception error) {
+        try {
+            string path = Path.Combine(Root, "crash.txt");
+            if (File.Exists(path) && new FileInfo(path).Length > 64000) File.Delete(path);
+            File.AppendAllText(path, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " " + (error == null ? "unknown error" : error.ToString()) + Environment.NewLine);
+        } catch { }
     }
 }
