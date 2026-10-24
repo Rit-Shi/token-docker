@@ -867,7 +867,8 @@ class GlassBar : Window {
         face.Rows.Add(new Row {
             Id = "deepseek", Label = "DEEPSEEK",
             Meter = new Meter("DeepSeek", "¥28.60", ""),
-            Usage = new TodayUsage { Date = DateTime.Now.ToString("yyyy-MM-dd"), Cost = .86m, Tokens = 124800, Currency = "CNY", Source = "示例数据" }
+            Usage = new TodayUsage { Date = DateTime.Now.ToString("yyyy-MM-dd"), Cost = .86m, Tokens = 124800, Currency = "CNY", Source = "示例数据" },
+            Spend = "今日 ≈¥0.86", SpendCost = .86m
         });
         face.Rows.Add(new Row { Id = "kimi", Label = "KIMI", Meter = new Meter("Kimi", "¥49.59", "") });
         face.Rows.Add(new Row { Id = "minimax", Label = "MINIMAX", Meter = new Meter("MiniMax", "5h 76%", "") { FiveHour = 76, Weekly = 61 } });

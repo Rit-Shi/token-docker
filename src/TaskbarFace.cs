@@ -8,7 +8,7 @@ using System.Windows.Media;
 class TaskbarFace : FrameworkElement {
     static readonly Geometry Zhipu = Paint.Icon("zhipu"), DeepSeek = Paint.Icon("deepseek");
 
-    public const double TileWidth = 104;
+    public const double TileWidth = 118;
     public const double TileHeight = 38;
     public const double ControlsWidth = 46;
 
@@ -46,9 +46,21 @@ class TaskbarFace : FrameworkElement {
         return new SolidColorBrush(Paint.Quota(row.Meter.FiveHour, Limits.QuotaWarn));
     }
 
+    // Plan tiles show both windows, balance tiles append today's spend: "¥42.36 | ¥1.20".
+    string Text(Row row) {
+        if (HasWindows(row)) return row.Meter.Compact;
+        if (row.SpendCost.HasValue && row.SpendCost.Value > 0) {
+            string currency = string.IsNullOrEmpty(row.Meter.Currency) ? "CNY" : row.Meter.Currency;
+            string symbol = currency == "CNY" ? "¥" : currency == "USD" ? "$" : currency + " ";
+            return row.Meter.Value + " | " + symbol + row.SpendCost.Value.ToString("0.00");
+        }
+        return row.Meter.Value;
+    }
+
     double ValueSize(Row row) {
+        string text = Text(row);
         if (HasWindows(row)) return 13;
-        string text = row.Meter.Compact;
+        if (text != null && text.IndexOf('|') >= 0) return 12;
         return text != null && text.Length <= 7 ? 14 : 12;
     }
 
@@ -99,8 +111,8 @@ class TaskbarFace : FrameworkElement {
             if (i == Hover) d.DrawRoundedRectangle(Paint.B(Light ? "#14203049" : "#22FFFFFF"), null, new Rect(x - 4, 4, TileWidth - 2, height - 8), 10, 10);
 
             Glyph(d, row.Id, new Rect(x, 9, 20, 20), Ink);
-            Paint.Text(d, row.Label, 7, Muted, new Point(x + 26, 8), true, 70);
-            Paint.Text(d, row.Meter.Compact, ValueSize(row), ValueInk(row), new Point(x + 26, 18), true, 72);
+            Paint.Text(d, row.Label, 7, Muted, new Point(x + 26, 8), true, 80);
+            Paint.Text(d, Text(row), ValueSize(row), ValueInk(row), new Point(x + 26, 18), true, 86);
         }
 
         // Buttons, mirrored from the floating bar's footer.
