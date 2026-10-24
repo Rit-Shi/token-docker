@@ -269,18 +269,19 @@ class BarFace : FrameworkElement {
         d.DrawRoundedRectangle(gradient, new Pen(Paint.B(Light ? "#EFFFFFFF" : "#707F96B3"), 1), rect, 27, 27);
 
         if (Primary != null && HasWindows(Primary)) {
-            Paint.Arc(d, new Point(64, 59), 35, Primary.Meter.FiveHour, Track, Limits.QuotaWarn);
-            Paint.Arc(d, new Point(64, 59), 27, Primary.Meter.Weekly, Track, Limits.QuotaWarn);
-            Glyph(d, Primary.Id, new Rect(47, 42, 34, 34), Ink);
+            // Matches the height of the balance column beside it, and shares its centre line.
+            Paint.Arc(d, new Point(64, 59), 30, Primary.Meter.FiveHour, Track, Limits.QuotaWarn);
+            Paint.Arc(d, new Point(64, 59), 23, Primary.Meter.Weekly, Track, Limits.QuotaWarn);
+            Glyph(d, Primary.Id, new Rect(50, 45, 28, 28), Ink);
         } else if (Primary != null) {
-            Glyph(d, Primary.Id, new Rect(42, 38, 40, 40), Ink);
+            Glyph(d, Primary.Id, new Rect(46, 39, 36, 36), Ink);
         }
 
-        d.DrawLine(new Pen(Divider, 1), new Point(112, 30), new Point(112, 88));
+        d.DrawLine(new Pen(Divider, 1), new Point(108, 30), new Point(108, 88));
         for (int i = 0; i < Rows.Count; i++) {
             var row = Rows[i];
             double x = 118 + i * 92;
-            var center = new Point(x + 15, 31);
+            var center = new Point(x + 15, 36);
             if (HasWindows(row)) {
                 Paint.Arc(d, center, 11, row.Meter.FiveHour, Track, Limits.QuotaWarn, 3);
                 Paint.Arc(d, center, 9, row.Meter.Weekly, Track, Limits.QuotaWarn, 3);
@@ -288,9 +289,9 @@ class BarFace : FrameworkElement {
             } else {
                 Glyph(d, row.Id, new Rect(center.X - 8, center.Y - 8, 16, 16), Ink);
             }
-            Paint.Text(d, row.Label, 9, Muted, new Point(x + 30, 18), true, 52);
-            Paint.Text(d, row.Meter.Compact, ValueSize(row, 16, 14), Ink, new Point(x + 4, 40), true, 80);
-            if (row.Usage != null || row.Spend != null) Paint.Text(d, SpendText(row), 8, SpendInk(row), new Point(x + 4, 66), false, 80);
+            Paint.Text(d, row.Label, 9, Muted, new Point(x + 30, 30), true, 52);
+            Paint.Text(d, row.Meter.Compact, ValueSize(row, 16, 14), Ink, new Point(x + 4, 52), true, 80);
+            if (row.Usage != null || row.Spend != null) Paint.Text(d, SpendText(row), 8, SpendInk(row), new Point(x + 4, 76), false, 80);
         }
 
         d.DrawEllipse(null, new Pen(Muted, 1.3), new Point(width - 30, 39), 6, 6);
