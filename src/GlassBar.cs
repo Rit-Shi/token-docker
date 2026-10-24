@@ -23,6 +23,7 @@ class GlassBar : Window {
     readonly BarFace face = new BarFace();
     readonly DispatcherTimer refresh = new DispatcherTimer();
     readonly DispatcherTimer spring = new DispatcherTimer();
+    readonly DispatcherTimer stripCard = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
     readonly Popup hover = new Popup { AllowsTransparency = true, StaysOpen = true };
     readonly Dictionary<string, Row> rows = new Dictionary<string, Row>(StringComparer.OrdinalIgnoreCase);
     readonly List<Row> liveRows = new List<Row>();
@@ -63,6 +64,7 @@ class GlassBar : Window {
         refresh.Tick += async (s, e) => await Refresh();
         spring.Interval = TimeSpan.FromMilliseconds(16);
         spring.Tick += (s, e) => Spring();
+        stripCard.Tick += (s, e) => { stripCard.Stop(); hover.IsOpen = false; };
 
         MouseLeftButtonDown += OnMouseDown;
         MouseMove += OnMouseMove;
@@ -93,6 +95,7 @@ class GlassBar : Window {
             hover.IsOpen = false;
             refresh.Stop();
             spring.Stop();
+            stripCard.Stop();
             if (console != null) console.Shutdown();
             if (mimo != null) mimo.Shutdown();
             if (strip != null) strip.Close();
@@ -245,21 +248,20 @@ class GlassBar : Window {
         Save();
     }
 
-    // A click on a strip tile reveals the floating bar with that provider's card open.
+    // A click on a strip tile opens its detail card next to the strip. The bar stays hidden,
+    // otherwise the two surfaces would flip on every click.
     void ShowProviderFromStrip(string id) {
-        Show();
-        WindowState = WindowState.Normal;
-        Activate();
-        for (int i = 0; i < face.Rows.Count; i++) {
-            if (face.Rows[i].Id != id) continue;
-            face.Hover = 100 + i;
-            ShowHover(face.Hover);
-            return;
-        }
-        if (face.Primary != null && face.Primary.Id == id) {
-            face.Hover = 1;
-            ShowHover(1);
-        }
+        Row row;
+        if (!rows.TryGetValue(id, out row) || strip == null) return;
+        hover.IsOpen = false;
+        hover.Child = Card(Details(row, row == face.Primary));
+        hover.PlacementTarget = strip.Surface;
+        hover.Placement = strip.AtTop ? PlacementMode.Bottom : PlacementMode.Top;
+        hover.HorizontalOffset = 8;
+        hover.VerticalOffset = strip.AtTop ? 8 : -8;
+        hover.IsOpen = true;
+        stripCard.Stop();
+        stripCard.Start();
     }
 
     Row GetRow(string id) {

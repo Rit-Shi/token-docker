@@ -31,6 +31,8 @@ class TaskbarStrip : Window {
     // Pulling the strip away from its edge turns it back into the floating bar.
     public Action<double, double> DetachRequested;
     public bool AtTop;
+    // Popups need an element inside the window as their placement target.
+    public FrameworkElement Surface { get { return face; } }
 
     public TaskbarStrip() {
         Title = "Token Bar · 任务栏";
