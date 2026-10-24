@@ -46,15 +46,25 @@ class TaskbarFace : FrameworkElement {
         return new SolidColorBrush(Paint.Quota(row.Meter.FiveHour, Limits.QuotaWarn));
     }
 
-    // Balance tiles append today's spend as a second, separately coloured segment.
+    // Real console usage wins over the balance-difference estimate; a measured zero still counts
+    // so the column keeps its shape instead of collapsing to the balance alone.
+    decimal? Spend(Row row) {
+        if (HasWindows(row)) return null;
+        if (row.Usage != null && row.Usage.Date == DateTime.Now.ToString("yyyy-MM-dd")) {
+            decimal? cost = row.Usage.CnyCost ?? row.Usage.Cost;
+            if (cost.HasValue && cost.Value >= 0) return cost;
+        }
+        return row.SpendCost;
+    }
+
     bool HasSpend(Row row) {
-        return !HasWindows(row) && row.SpendCost.HasValue && row.SpendCost.Value > 0;
+        return Spend(row).HasValue;
     }
 
     string SpendPart(Row row) {
         string currency = string.IsNullOrEmpty(row.Meter.Currency) ? "CNY" : row.Meter.Currency;
         string symbol = currency == "CNY" ? "¥" : currency == "USD" ? "$" : currency + " ";
-        return symbol + row.SpendCost.Value.ToString("0.00");
+        return symbol + Spend(row).Value.ToString("0.00");
     }
 
     string Text(Row row) {
@@ -66,14 +76,15 @@ class TaskbarFace : FrameworkElement {
     // The spend segment uses the same green -> yellow -> red ramp as the floating bar.
     void DrawValue(DrawingContext d, Row row, Point at, double max) {
         double size = ValueSize(row);
-        if (!HasSpend(row)) {
+        decimal? spend = Spend(row);
+        if (!spend.HasValue) {
             Paint.Text(d, Text(row), size, ValueInk(row), at, true, max);
             return;
         }
         Paint.Text(d, row.Meter.Value, size, Ink, at, true, max);
         double used = Math.Min(Paint.Measure(row.Meter.Value, size, true), max);
         string tail = " | " + SpendPart(row);
-        var brush = new SolidColorBrush(Paint.Expense(row.SpendCost, Limits.CostWarn, Limits.CostDanger));
+        var brush = new SolidColorBrush(Paint.Expense(spend, Limits.CostWarn, Limits.CostDanger));
         Paint.Text(d, tail, size, brush, new Point(at.X + used, at.Y), true, Math.Max(12, max - used));
     }
 

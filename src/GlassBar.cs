@@ -741,15 +741,12 @@ class GlassBar : Window {
     void TrackDaily(Row row) {
         if (preview || row.Meter == null || !row.Meter.Amount.HasValue) return;
         decimal spend = daily.Sample(row.Id, row.Meter.Amount.Value);
-        if (spend <= 0) {
-            row.Spend = null;
-            row.SpendCost = null;
-            return;
-        }
         string currency = string.IsNullOrEmpty(row.Meter.Currency) ? "CNY" : row.Meter.Currency;
         string money = currency == "CNY" ? "¥" : currency == "USD" ? "$" : currency + " ";
+        // The strip always shows the usage column once we have a sample; the bar's extra line
+        // stays quiet while nothing has been spent.
         row.SpendCost = spend;
-        row.Spend = "今日 ≈" + money + spend.ToString("0.00");
+        row.Spend = spend > 0 ? "今日 ≈" + money + spend.ToString("0.00") : null;
     }
 
     // ---- hover --------------------------------------------------------
