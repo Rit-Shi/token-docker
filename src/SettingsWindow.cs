@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -164,7 +165,25 @@ class SettingsWindow : Window {
             Padding = new Thickness(6),
             Margin = new Thickness(0, 6, 0, 0)
         };
-        panel.Children.Add(key);
+        var copy = new Button {
+            Content = "复制",
+            Margin = new Thickness(8, 6, 0, 0),
+            Padding = new Thickness(12, 3, 12, 3),
+            VerticalAlignment = VerticalAlignment.Top,
+            IsEnabled = key.Password.Length > 0,
+            ToolTip = "复制这行 Key，方便粘贴到别处"
+        };
+        copy.Click += (s, e) => CopyKey(key.Password, copy);
+        key.PasswordChanged += (s, e) => copy.IsEnabled = key.Password.Length > 0;
+
+        var keyRow = new Grid();
+        keyRow.ColumnDefinitions.Add(new ColumnDefinition());
+        keyRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(key, 0);
+        Grid.SetColumn(copy, 1);
+        keyRow.Children.Add(key);
+        keyRow.Children.Add(copy);
+        panel.Children.Add(keyRow);
         apply.Add(() => {
             string value = key.Password.Trim();
             switch (info.Id) {
@@ -208,6 +227,32 @@ class SettingsWindow : Window {
             });
         }
         if (extra.Children.Count > 0) panel.Children.Add(extra);
+    }
+
+    // Copies the key in the box (including unsaved edits) and confirms on the button itself,
+    // so no dialog interrupts the flow.
+    static async void CopyKey(string value, Button button) {
+        string text = (value ?? "").Trim();
+        if (text.Length == 0) return;
+        bool copied = false;
+        for (int attempt = 0; attempt < 3 && !copied; attempt++) {
+            copied = TrySetClipboard(text);
+            if (!copied) await Task.Delay(80);
+        }
+        if (!copied) return;
+        button.Content = "已复制";
+        await Task.Delay(1200);
+        button.Content = "复制";
+    }
+
+    // Another process can hold the clipboard for a moment; retry instead of failing silently.
+    static bool TrySetClipboard(string text) {
+        try {
+            Clipboard.SetText(text);
+            return true;
+        } catch {
+            return false;
+        }
     }
 
     void Commit() {

@@ -50,7 +50,7 @@ node tests/test-console-bridge.cjs
 
 ## 连接
 
-通过浮条或托盘的“连接设置”填写各家的 Key；国际站用户勾选对应行的“国际站”。GLM 需要套餐 API Key，DeepSeek/Kimi/MiniMax 用账户 API Key。
+通过浮条或托盘的“连接设置”填写各家的 Key；国际站用户勾选对应行的“国际站”。GLM 需要套餐 API Key，DeepSeek/Kimi/MiniMax 用账户 API Key。每行 Key 输入框右侧的“复制”按钮会把该 Key（包括尚未保存的改动）放进剪贴板，方便粘到别处；剪贴板内容不会被自动清除。
 
 小米 MiMo 比较特殊：控制台的余额和 Token Plan 接口只认网页登录会话，不接受 API Key。在设置里点“连接 MiMo 控制台”，在弹出窗口登录小米账号后会自动同步；`mimo-profile/` 保存登录状态，会话过期时重新登录即可。
 
