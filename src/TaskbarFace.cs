@@ -47,7 +47,9 @@ class TaskbarFace : FrameworkElement {
     }
 
     double ValueSize(Row row) {
-        return row.Meter.Value != null && row.Meter.Value.Length <= 7 ? 14 : 12;
+        if (HasWindows(row)) return 13;
+        string text = row.Meter.Compact;
+        return text != null && text.Length <= 7 ? 14 : 12;
     }
 
     void Glyph(DrawingContext d, string id, Rect r, Brush ink) {
@@ -98,7 +100,7 @@ class TaskbarFace : FrameworkElement {
 
             Glyph(d, row.Id, new Rect(x, 9, 20, 20), Ink);
             Paint.Text(d, row.Label, 7, Muted, new Point(x + 26, 8), true, 70);
-            Paint.Text(d, row.Meter.Value, ValueSize(row), ValueInk(row), new Point(x + 26, 18), true, 72);
+            Paint.Text(d, row.Meter.Compact, ValueSize(row), ValueInk(row), new Point(x + 26, 18), true, 72);
         }
 
         // Buttons, mirrored from the floating bar's footer.

@@ -72,7 +72,9 @@ class BarFace : FrameworkElement {
 
     // Short values (money, single percentages) get the larger size; long plan strings stay a notch smaller.
     double ValueSize(Row row, double large, double small) {
-        return row.Meter.Value != null && row.Meter.Value.Length <= 7 ? large : small;
+        string text = row.Meter.Compact;
+        if (text != null && text.IndexOf('|') >= 0) return small;
+        return text != null && text.Length <= 7 ? large : small;
     }
 
     public Brush SpendInk(Row row) {
@@ -204,7 +206,7 @@ class BarFace : FrameworkElement {
         }
 
         Paint.Text(d, row.Label, 9, Muted, new Point(47, y + 5), true, 64);
-        Paint.Text(d, row.Meter.Value, ValueSize(row, 16, 14), Ink, new Point(47, y + 19), true, 70);
+        Paint.Text(d, row.Meter.Compact, ValueSize(row, 16, 14), Ink, new Point(47, y + 19), true, 70);
         if (row.Usage != null || row.Spend != null) Paint.Text(d, SpendText(row), 9, SpendInk(row), new Point(47, y + 40), false, 70);
     }
 
@@ -287,7 +289,7 @@ class BarFace : FrameworkElement {
                 Glyph(d, row.Id, new Rect(center.X - 8, center.Y - 8, 16, 16), Ink);
             }
             Paint.Text(d, row.Label, 9, Muted, new Point(x + 30, 18), true, 52);
-            Paint.Text(d, row.Meter.Value, ValueSize(row, 16, 14), Ink, new Point(x + 4, 40), true, 80);
+            Paint.Text(d, row.Meter.Compact, ValueSize(row, 16, 14), Ink, new Point(x + 4, 40), true, 80);
             if (row.Usage != null || row.Spend != null) Paint.Text(d, SpendText(row), 8, SpendInk(row), new Point(x + 4, 66), false, 80);
         }
 

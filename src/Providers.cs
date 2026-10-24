@@ -23,6 +23,13 @@ class Meter {
     public decimal? Amount;
     public string Currency;
     public Meter(string n, string v, string d, double? r = null) { Name=n; Value=v; Detail=d; Remaining=r; }
+    // Narrow spaces (taskbar tiles, bar rows) use "82% | 43%" instead of the verbose label.
+    public string Compact {
+        get {
+            if (FiveHour.HasValue && Weekly.HasValue) return Data.Pct(FiveHour) + " | " + Data.Pct(Weekly);
+            return Value;
+        }
+    }
 }
 class Config {
     public string Glm="", DeepSeek="";

@@ -93,6 +93,11 @@ class GlassChecks {
         Check(stripFace.Hit(new Point(controls+6,19))==TaskbarFace.HitTheme);
         Check(stripFace.Hit(new Point(controls+32,19))==TaskbarFace.HitMenu);
 
+        var planMeter=new Meter("GLM","5h 82% · 周 43%",""){FiveHour=82,Weekly=43};
+        Check(planMeter.Compact=="82% | 43%");
+        Check(new Meter("Kimi","¥9.00","").Compact=="¥9.00");
+        Check((new Meter("MiMo","月 91%",""){Weekly=91}).Compact=="月 91%");
+
         var deepRow=new Row{Id="deepseek",Label="DEEPSEEK",Meter=new Meter("DeepSeek","¥1.00",""),Usage=new TodayUsage{Date=DateTime.Now.ToString("yyyy-MM-dd"),Currency="CNY",Cost=4m}};
         var inkFace=new BarFace();
         var normal=((SolidColorBrush)inkFace.SpendInk(deepRow)).Color;
