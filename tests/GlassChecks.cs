@@ -67,6 +67,7 @@ class GlassChecks {
         Check(hiddenConfig.IsHidden("kimi")&&hiddenConfig.IsHidden("MIMO")&&!hiddenConfig.IsHidden("glm"));
         Check(!Catalog.Configured(Catalog.Get("kimi"),new Config{Kimi="sk-test",Hidden="kimi"}));
         Check(Catalog.Configured(Catalog.Get("kimi"),new Config{Kimi="sk-test"}));
+        Check(Paint.HasSvg("kimi")&&Paint.HasSvg("kimi-color")&&Paint.HasSvg("minimax")&&Paint.HasSvg("minimax-color"));
 
         var face=new BarFace();
         face.Primary=new Row{Id="glm",Label="ZHIPU",Meter=new Meter("GLM","",""){FiveHour=80,Weekly=50}};

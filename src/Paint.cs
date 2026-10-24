@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
@@ -81,6 +82,119 @@ static class Paint {
         d.DrawGeometry(brush, null, shape);
         d.Pop();
         d.Pop();
+    }
+
+    // ---- full-colour SVG icons -------------------------------------------------
+    // The bundled logos come in two variants: a single-colour file (currentColor) and a
+    // colour file where paths carry their own fill and may reference a linear gradient.
+
+    class SvgShape {
+        public Geometry Geometry;
+        public string Fill;
+        public SvgGradient Gradient;
+    }
+
+    class SvgGradient {
+        public double X1, Y1, X2, Y2;
+        public readonly List<Color> Colors = new List<Color>();
+        public readonly List<double> Offsets = new List<double>();
+    }
+
+    static readonly Dictionary<string, List<SvgShape>> svgCache = new Dictionary<string, List<SvgShape>>();
+
+    public static bool HasSvg(string name) {
+        return Load(name) != null;
+    }
+
+    public static bool Svg(DrawingContext d, string name, Rect r, Brush ink) {
+        var shapes = Load(name);
+        if (shapes == null) return false;
+        d.PushTransform(new TranslateTransform(r.X, r.Y));
+        d.PushTransform(new ScaleTransform(r.Width / 24, r.Height / 24));
+        foreach (var shape in shapes) {
+            Brush brush = ink;
+            if (shape.Gradient != null) brush = GradientBrush(shape.Gradient);
+            else if (!string.IsNullOrEmpty(shape.Fill) && shape.Fill != "currentColor") brush = new SolidColorBrush(C(shape.Fill));
+            d.DrawGeometry(brush, null, shape.Geometry);
+        }
+        d.Pop();
+        d.Pop();
+        return true;
+    }
+
+    static List<SvgShape> Load(string name) {
+        List<SvgShape> cached;
+        if (svgCache.TryGetValue(name, out cached)) return cached;
+
+        List<SvgShape> shapes = null;
+        using (var stream = typeof(Paint).Assembly.GetManifestResourceStream(name + ".svg")) {
+            if (stream != null) {
+                var xml = new XmlDocument { XmlResolver = null };
+                xml.Load(stream);
+
+                var gradients = new Dictionary<string, SvgGradient>();
+                foreach (XmlNode node in xml.GetElementsByTagName("linearGradient")) {
+                    var gradient = new SvgGradient();
+                    gradient.X1 = Percent(node.Attributes["x1"], 0);
+                    gradient.Y1 = Percent(node.Attributes["y1"], 0);
+                    gradient.X2 = Percent(node.Attributes["x2"], 1);
+                    gradient.Y2 = Percent(node.Attributes["y2"], 0);
+                    foreach (XmlNode stop in node.ChildNodes) {
+                        if (stop.Name != "stop" || stop.Attributes["stop-color"] == null) continue;
+                        gradient.Colors.Add(C(stop.Attributes["stop-color"].Value));
+                        gradient.Offsets.Add(Percent(stop.Attributes["offset"], 0));
+                    }
+                    if (node.Attributes["id"] != null && gradient.Colors.Count > 0)
+                        gradients[node.Attributes["id"].Value] = gradient;
+                }
+
+                var root = xml.DocumentElement;
+                string rootFill = root == null ? "currentColor" : root.GetAttribute("fill");
+                FillRule rule = root != null && root.GetAttribute("fill-rule") == "evenodd" ? FillRule.EvenOdd : FillRule.Nonzero;
+
+                shapes = new List<SvgShape>();
+                foreach (XmlNode path in xml.GetElementsByTagName("path")) {
+                    if (path.Attributes["d"] == null) continue;
+                    var shape = new SvgShape();
+                    shape.Geometry = Geometry.Parse(path.Attributes["d"].Value);
+                    var pathGeometry = shape.Geometry as PathGeometry;
+                    if (pathGeometry != null) pathGeometry.FillRule = rule;
+                    shape.Fill = path.Attributes["fill"] != null ? path.Attributes["fill"].Value
+                        : string.IsNullOrEmpty(rootFill) ? "currentColor" : rootFill;
+                    if (shape.Fill.StartsWith("url(#", StringComparison.Ordinal)) {
+                        int end = shape.Fill.IndexOf(')');
+                        string key = shape.Fill.Substring(5, end - 5);
+                        SvgGradient gradient;
+                        if (gradients.TryGetValue(key, out gradient)) shape.Gradient = gradient;
+                    }
+                    shapes.Add(shape);
+                }
+            }
+        }
+        svgCache[name] = shapes;
+        return shapes;
+    }
+
+    static double Percent(XmlAttribute attribute, double fallback) {
+        if (attribute == null) return fallback;
+        string text = attribute.Value.Trim();
+        double value;
+        if (text.EndsWith("%", StringComparison.Ordinal)) {
+            return double.TryParse(text.Substring(0, text.Length - 1), NumberStyles.Float, CultureInfo.InvariantCulture, out value)
+                ? value / 100 : fallback;
+        }
+        return double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value) ? value : fallback;
+    }
+
+    static Brush GradientBrush(SvgGradient gradient) {
+        var brush = new LinearGradientBrush {
+            MappingMode = BrushMappingMode.RelativeToBoundingBox,
+            StartPoint = new Point(gradient.X1, gradient.Y1),
+            EndPoint = new Point(gradient.X2, gradient.Y2)
+        };
+        for (int i = 0; i < gradient.Colors.Count; i++)
+            brush.GradientStops.Add(new GradientStop(gradient.Colors[i], gradient.Offsets[i]));
+        return brush;
     }
 
     public static void Arc(DrawingContext d, Point center, double radius, double? value, Brush track, double warn = 50) {

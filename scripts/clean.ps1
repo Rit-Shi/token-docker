@@ -49,7 +49,7 @@ function Assert-SafeTree([string]$Path) {
 }
 
 # These copies must exist before removing old source/assets.
-foreach ($required in @('src/GlassBar.cs','src/BarFace.cs','src/Paint.cs','src/Limits.cs','src/Catalog.cs','src/MiMoConsole.cs','src/SettingsWindow.cs','src/Providers.cs','src/DeepSeekConsole.cs','src/console-bridge.js','tests/GlassChecks.cs','tests/test-console-bridge.cjs','scripts/build.ps1','scripts/build-icon.cjs','assets/zhipu.svg','assets/deepseek.svg','assets/tokenbar.svg','assets/tokenbar.ico','assets/tokenbar.png','README.md')) {
+foreach ($required in @('src/GlassBar.cs','src/BarFace.cs','src/Paint.cs','src/Limits.cs','src/Catalog.cs','src/MiMoConsole.cs','src/SettingsWindow.cs','src/Providers.cs','src/DeepSeekConsole.cs','src/console-bridge.js','tests/GlassChecks.cs','tests/test-console-bridge.cjs','scripts/build.ps1','scripts/build-icon.cjs','assets/zhipu.svg','assets/deepseek.svg','assets/kimi.svg','assets/kimi-color.svg','assets/minimax.svg','assets/minimax-color.svg','assets/tokenbar.svg','assets/tokenbar.ico','assets/tokenbar.png','README.md')) {
     if (!(Test-Path -LiteralPath (Join-Path $repoRoot $required) -PathType Leaf)) {
         throw "Missing organized project file; cleanup cancelled: $required"
     }

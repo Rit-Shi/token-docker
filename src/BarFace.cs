@@ -85,7 +85,12 @@ class BarFace : FrameworkElement {
     void Glyph(DrawingContext d, string id, Rect r, Brush ink) {
         if (id == "glm") { Paint.Logo(d, Zhipu, ink, r); return; }
         if (id == "deepseek") { Paint.Logo(d, DeepSeek, Paint.B(Light ? "#466AFF" : "#91ADFF"), r); return; }
-        string letter = id == "kimi" ? "K" : id == "minimax" ? "M" : "Mi";
+        if (id == "kimi" || id == "minimax") {
+            // The colour variant carries the brand accent (Kimi's blue dot, MiniMax's gradient);
+            // on the dark glass the single-colour mark reads better.
+            if (Paint.Svg(d, Light ? id + "-color" : id, r, ink)) return;
+        }
+        string letter = id == "kimi" ? "K" : "M";
         d.DrawRoundedRectangle(null, new Pen(Muted, 1.1), r, r.Width * .3, r.Width * .3);
         Paint.Centered(d, letter, r.Height * .52, ink, r);
     }
@@ -189,7 +194,7 @@ class BarFace : FrameworkElement {
         if (HasWindows(row)) {
             Paint.Arc(d, center, 13, row.Meter.FiveHour, Track, Limits.QuotaWarn);
             Paint.Arc(d, center, 10, row.Meter.Weekly, Track, Limits.QuotaWarn);
-            Glyph(d, row.Id, new Rect(center.X - 7, center.Y - 7, 14, 14), Ink);
+            Glyph(d, row.Id, new Rect(center.X - 7.5, center.Y - 7.5, 15, 15), Ink);
         } else {
             Glyph(d, row.Id, new Rect(center.X - 10, center.Y - 10, 20, 20), Ink);
         }

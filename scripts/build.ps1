@@ -28,7 +28,7 @@ Copy-Item -LiteralPath (Join-Path $repoRoot 'licenses/LobeHub-LICENSE.txt') -Des
 $references = @('PresentationCore.dll','PresentationFramework.dll','WindowsBase.dll') | ForEach-Object { '/reference:' + (Join-Path $frameworkDir "WPF/$_") }
 $icon = Join-Path $repoRoot 'assets/tokenbar.ico'
 $sources = @('src/Providers.cs','src/Limits.cs','src/Paint.cs','src/Catalog.cs','src/BarFace.cs','src/MiMoConsole.cs','src/SettingsWindow.cs','src/GlassBar.cs','src/DeepSeekConsole.cs','tests/GlassChecks.cs') | ForEach-Object { Join-Path $repoRoot $_ }
-$resources = @('assets/zhipu.svg,zhipu.svg','assets/deepseek.svg,deepseek.svg','src/console-bridge.js,console-bridge.js','assets/tokenbar.ico,tokenbar.ico') | ForEach-Object { '/resource:' + (Join-Path $repoRoot $_) }
+$resources = @('assets/zhipu.svg,zhipu.svg','assets/deepseek.svg,deepseek.svg','assets/kimi.svg,kimi.svg','assets/kimi-color.svg,kimi-color.svg','assets/minimax.svg,minimax.svg','assets/minimax-color.svg,minimax-color.svg','src/console-bridge.js,console-bridge.js','assets/tokenbar.ico,tokenbar.ico') | ForEach-Object { '/resource:' + (Join-Path $repoRoot $_) }
 $executable = Join-Path $buildRoot 'TokenBar-Tray.exe'
 & $compiler /nologo /platform:x64 /target:winexe "/out:$executable" "/win32icon:$icon" $resources $references "/reference:$coreDll" "/reference:$wpfDll" /reference:System.Xaml.dll /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Web.Extensions.dll /reference:System.Net.Http.dll /reference:System.Security.dll $sources
 if ($LASTEXITCODE -ne 0) { throw 'Compilation failed. Exit any running app in build/ before rebuilding.' }

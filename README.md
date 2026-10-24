@@ -78,4 +78,4 @@ DeepSeek 可通过 API Key 查询余额。要显示今日花费和 token，使�
 
 测试使用虚构数据，不需要真实账户。真实桌面的托盘、窗口交互和登录流程需要在 Windows 用户会话中验证。
 
-本项目代码采用 [MIT 许可](LICENSE)。智谱和 DeepSeek 图标来自 LobeHub Icons，适用其 [MIT 许可](licenses/LobeHub-LICENSE.txt)；品牌名称和标识归各自权利人所有。本项目非官方客户端。WebView2 适用 [Microsoft 许可](licenses/WebView2-LICENSE.txt)。
+本项目代码采用 [MIT 许可](LICENSE)。智谱、DeepSeek、Kimi 和 MiniMax 图标来自 LobeHub Icons，适用其 [MIT 许可](licenses/LobeHub-LICENSE.txt)；品牌名称和标识归各自权利人所有。本项目非官方客户端。WebView2 适用 [Microsoft 许可](licenses/WebView2-LICENSE.txt)。
