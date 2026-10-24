@@ -90,9 +90,8 @@ class BarFace : FrameworkElement {
             // on the dark glass the single-colour mark reads better.
             if (Paint.Svg(d, Light ? id + "-color" : id, r, ink)) return;
         }
-        string letter = id == "kimi" ? "K" : "M";
-        d.DrawRoundedRectangle(null, new Pen(Muted, 1.1), r, r.Width * .3, r.Width * .3);
-        Paint.Centered(d, letter, r.Height * .52, ink, r);
+        // MiMo has no published mark yet, so it gets a plain monogram instead of a fake logo.
+        Paint.Centered(d, id == "kimi" ? "K" : "M", r.Height * .68, ink, r);
     }
 
     public int Hit(Point p) {
