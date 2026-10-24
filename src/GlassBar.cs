@@ -207,6 +207,7 @@ class GlassBar : Window {
                 strip = new TaskbarStrip();
                 strip.ProviderClicked = ShowProviderFromStrip;
                 strip.MenuRequested = () => BuildTrayMenu().Show(WinForms.Cursor.Position);
+                strip.ThemeRequested = ToggleTheme;
                 strip.PositionChanged = x => { config.TaskbarX = x; Save(); };
             }
             UpdateStrip();
@@ -355,6 +356,14 @@ class GlassBar : Window {
         var area = Area();
         double distance;
         string edge = Nearest(area, Left, Top, Width, out distance, UiScale);
+
+        // Dropping the bar on the bottom edge converts it into the taskbar strip.
+        double bottomGap = Math.Abs(Top + Height - area.Bottom);
+        if (snap && bottomGap < distance && bottomGap < 60) {
+            SwitchToTaskbar();
+            return;
+        }
+
         if (distance < 60) {
             face.Edge = edge;
             face.Pull = (60 - distance) / 60 * 8;
@@ -370,6 +379,19 @@ class GlassBar : Window {
         }
         if (snap) Clamp();
         face.InvalidateVisual();
+    }
+
+    // Dragging the floating bar to the bottom edge morphs it into the taskbar strip there.
+    void SwitchToTaskbar() {
+        config.Taskbar = true;
+        config.TaskbarX = (int)Left;
+        face.Pull = 0;
+        velocity = 0;
+        spring.Stop();
+        EnsureStrip();
+        hover.IsOpen = false;
+        Hide();
+        Save();
     }
 
     void Spring() {
@@ -838,8 +860,9 @@ class GlassBar : Window {
             flat.Measure(new Size(flat.Width, flat.Height));
             flat.Arrange(new Rect(0, 0, flat.Width, flat.Height));
             Paint.Text(d, "任务栏模式：贴在任务栏上方，所有用量平铺一行", 11, Brushes.White, new Point(12, bottom + 150));
+            double stripScale = Math.Min(UiScale, (420 - 24.0) / flat.ContentWidth);
             d.PushTransform(new TranslateTransform(12, bottom + 168));
-            d.PushTransform(new ScaleTransform(UiScale, UiScale));
+            d.PushTransform(new ScaleTransform(stripScale, stripScale));
             flat.Render(d);
             d.Pop();
             d.Pop();

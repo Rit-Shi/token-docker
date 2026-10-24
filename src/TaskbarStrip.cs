@@ -26,6 +26,7 @@ class TaskbarStrip : Window {
 
     public Action<string> ProviderClicked;
     public Action MenuRequested;
+    public Action ThemeRequested;
     public Action<int> PositionChanged;
 
     public TaskbarStrip() {
@@ -163,6 +164,12 @@ class TaskbarStrip : Window {
             return;
         }
         int hit = face.Hit(e.GetPosition(face));
-        if (hit >= 0 && hit < face.Rows.Count && ProviderClicked != null) ProviderClicked(face.Rows[hit].Id);
+        if (hit == TaskbarFace.HitTheme) {
+            if (ThemeRequested != null) ThemeRequested();
+        } else if (hit == TaskbarFace.HitMenu) {
+            if (MenuRequested != null) MenuRequested();
+        } else if (hit >= 0 && hit < face.Rows.Count && ProviderClicked != null) {
+            ProviderClicked(face.Rows[hit].Id);
+        }
     }
 }
