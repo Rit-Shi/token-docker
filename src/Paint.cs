@@ -197,10 +197,10 @@ static class Paint {
         return brush;
     }
 
-    public static void Arc(DrawingContext d, Point center, double radius, double? value, Brush track, double warn = 50) {
-        d.DrawEllipse(null, new Pen(track, 5), center, radius, radius);
+    public static void Arc(DrawingContext d, Point center, double radius, double? value, Brush track, double warn = 50, double thickness = 5) {
+        d.DrawEllipse(null, new Pen(track, thickness), center, radius, radius);
         if (!value.HasValue || value <= 0) return;
-        var pen = new Pen(new SolidColorBrush(Quota(value, warn)), 5) {
+        var pen = new Pen(new SolidColorBrush(Quota(value, warn)), thickness) {
             StartLineCap = PenLineCap.Round,
             EndLineCap = PenLineCap.Round
         };

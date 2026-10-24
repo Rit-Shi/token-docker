@@ -192,8 +192,8 @@ class BarFace : FrameworkElement {
 
         var center = new Point(27, y + RowHeight / 2 - 4);
         if (HasWindows(row)) {
-            Paint.Arc(d, center, 13, row.Meter.FiveHour, Track, Limits.QuotaWarn);
-            Paint.Arc(d, center, 10, row.Meter.Weekly, Track, Limits.QuotaWarn);
+            Paint.Arc(d, center, 13, row.Meter.FiveHour, Track, Limits.QuotaWarn, 3.5);
+            Paint.Arc(d, center, 10, row.Meter.Weekly, Track, Limits.QuotaWarn, 3.5);
             Glyph(d, row.Id, new Rect(center.X - 7.5, center.Y - 7.5, 15, 15), Ink);
         } else {
             Glyph(d, row.Id, new Rect(center.X - 10, center.Y - 10, 20, 20), Ink);
@@ -276,8 +276,8 @@ class BarFace : FrameworkElement {
             double x = 118 + i * 92;
             var center = new Point(x + 15, 31);
             if (HasWindows(row)) {
-                Paint.Arc(d, center, 11, row.Meter.FiveHour, Track, Limits.QuotaWarn);
-                Paint.Arc(d, center, 9, row.Meter.Weekly, Track, Limits.QuotaWarn);
+                Paint.Arc(d, center, 11, row.Meter.FiveHour, Track, Limits.QuotaWarn, 3);
+                Paint.Arc(d, center, 9, row.Meter.Weekly, Track, Limits.QuotaWarn, 3);
                 Glyph(d, row.Id, new Rect(center.X - 6, center.Y - 6, 12, 12), Ink);
             } else {
                 Glyph(d, row.Id, new Rect(center.X - 8, center.Y - 8, 16, 16), Ink);
