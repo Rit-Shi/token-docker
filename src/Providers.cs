@@ -40,6 +40,8 @@ class Config {
     // Taskbar strip: enabled, which screen edge it anchors to, and the remembered X (-1 = right aligned).
     public bool Taskbar=false;
     public string TaskbarEdge="bottom";
+    // True when the floating bar is the wide pill rather than the vertical strip.
+    public bool Wide=false;
     public int TaskbarX=-1;
     public bool IsHidden(string id){
         if(string.IsNullOrWhiteSpace(Hidden)) return false;

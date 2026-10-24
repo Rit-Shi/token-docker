@@ -59,6 +59,11 @@ class GlassBar : Window {
         face.Edge = config.Edge ?? "right";
         RebuildRows();
         Orient(face.Edge);
+        // A bar that was pulled out of the strip stays wide, and is only vertical when docked.
+        if (config.Wide && (config.Edge ?? "") == "free") {
+            face.Horizontal = true;
+            Layout();
+        }
 
         refresh.Interval = TimeSpan.FromMinutes(5);
         refresh.Tick += async (s, e) => await Refresh();
@@ -419,6 +424,10 @@ class GlassBar : Window {
         bool fromTop = strip != null && strip.AtTop;
         config.Taskbar = false;
         EnsureStrip();
+        // Come back as a horizontal pill, matching the strip that was just pulled out.
+        face.Horizontal = true;
+        Layout();
+        config.Edge = "free";
         Left = x;
         // Nudge away from the edge so the next drag does not immediately re-enter strip mode.
         Top = fromTop ? y + 44 : y - 44;
@@ -837,6 +846,7 @@ class GlassBar : Window {
         config.X = (int)Left;
         config.Y = (int)Top;
         config.Theme = face.Light ? "light" : "dark";
+        config.Wide = face.Horizontal;
         try {
             var json = Data.Json().Serialize(config);
             var bytes = System.Security.Cryptography.ProtectedData.Protect(
