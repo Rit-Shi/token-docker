@@ -25,9 +25,11 @@ class GlassBar : Window {
     readonly DispatcherTimer spring = new DispatcherTimer();
     readonly Popup hover = new Popup { AllowsTransparency = true, StaysOpen = true };
     readonly Dictionary<string, Row> rows = new Dictionary<string, Row>(StringComparer.OrdinalIgnoreCase);
+    readonly List<Row> liveRows = new List<Row>();
     Config config = new Config();
     DeepSeekConsole console;
     MiMoConsole mimo;
+    TaskbarStrip strip;
     WinForms.NotifyIcon tray;
     System.Drawing.Icon trayIcon;
     bool busy, dragging, moved, preview;
@@ -80,6 +82,7 @@ class GlassBar : Window {
             spring.Stop();
             if (console != null) console.Shutdown();
             if (mimo != null) mimo.Shutdown();
+            if (strip != null) strip.Close();
             if (!preview) Save();
         };
     }
@@ -107,6 +110,7 @@ class GlassBar : Window {
         if (config.ConsoleConnected) await ConnectConsole(false);
         if (config.MimoConnected) await ConnectMimo(false);
         await Refresh();
+        EnsureStrip();
     }
 
     // ---- layout -------------------------------------------------------
@@ -132,7 +136,7 @@ class GlassBar : Window {
     }
 
     void RebuildRows() {
-        var live = new List<Row>();
+        liveRows.Clear();
         foreach (var info in Catalog.All) {
             if (!Catalog.Configured(info, config)) continue;
             Row row;
@@ -140,24 +144,25 @@ class GlassBar : Window {
                 row = new Row { Id = info.Id, Label = info.Label, Meter = new Meter(info.Label, "待刷新", "稍后自动刷新") };
                 rows[info.Id] = row;
             }
-            live.Add(row);
+            liveRows.Add(row);
         }
 
-        if (live.Count == 0) {
+        if (liveRows.Count == 0) {
             face.Primary = new Row { Id = "glm", Label = "未配置", Meter = new Meter("", "打开设置", "右键浮条或托盘图标，选择「连接设置」填写 API Key") };
             face.Rows = new List<Row>();
+            UpdateStrip();
             return;
         }
 
         Row primary = null;
         var wanted = Catalog.Get(config.Primary ?? "glm");
-        foreach (var row in live) if (wanted != null && row.Id == wanted.Id) primary = row;
-        if (primary == null) foreach (var row in live) if (row.Id == "glm") primary = row;
-        if (primary == null) foreach (var row in live) if (row.Meter.FiveHour.HasValue || row.Meter.Weekly.HasValue) { primary = row; break; }
-        if (primary == null && live.Count > 0) primary = live[0];
+        foreach (var row in liveRows) if (wanted != null && row.Id == wanted.Id) primary = row;
+        if (primary == null) foreach (var row in liveRows) if (row.Id == "glm") primary = row;
+        if (primary == null) foreach (var row in liveRows) if (row.Meter.FiveHour.HasValue || row.Meter.Weekly.HasValue) { primary = row; break; }
+        if (primary == null && liveRows.Count > 0) primary = liveRows[0];
 
         var rest = new List<Row>();
-        foreach (var row in live) if (row != primary) rest.Add(row);
+        foreach (var row in liveRows) if (row != primary) rest.Add(row);
 
         face.Primary = primary;
         if (config.Display == "cycle" && rest.Count > 0) {
@@ -165,6 +170,56 @@ class GlassBar : Window {
             face.Rows = new List<Row> { rest[cycle] };
         } else {
             face.Rows = rest;
+        }
+        UpdateStrip();
+    }
+
+    // ---- taskbar strip -------------------------------------------------
+
+    void UpdateStrip() {
+        if (strip == null) return;
+        strip.Update(new List<Row>(liveRows), face.Light, face.Limits);
+    }
+
+    void EnsureStrip() {
+        if (preview) return;
+        if (!config.Taskbar) {
+            if (strip != null && strip.IsVisible) strip.Hide();
+            return;
+        }
+        if (strip == null) {
+            strip = new TaskbarStrip();
+            strip.ProviderClicked = ShowProviderFromStrip;
+            strip.MenuRequested = () => BuildTrayMenu().Show(WinForms.Cursor.Position);
+            strip.PositionChanged = x => { config.TaskbarX = x; Save(); };
+        }
+        UpdateStrip();
+        if (!strip.IsVisible) strip.Show();
+        // The window sizes itself to the content, so measure before placing it.
+        strip.UpdateLayout();
+        strip.Place(config.TaskbarX);
+    }
+
+    void ToggleTaskbar() {
+        config.Taskbar = !config.Taskbar;
+        EnsureStrip();
+        Save();
+    }
+
+    // A click on a strip tile reveals the floating bar with that provider's card open.
+    void ShowProviderFromStrip(string id) {
+        Show();
+        WindowState = WindowState.Normal;
+        Activate();
+        for (int i = 0; i < face.Rows.Count; i++) {
+            if (face.Rows[i].Id != id) continue;
+            face.Hover = 100 + i;
+            ShowHover(face.Hover);
+            return;
+        }
+        if (face.Primary != null && face.Primary.Id == id) {
+            face.Hover = 1;
+            ShowHover(1);
         }
     }
 
@@ -311,9 +366,21 @@ class GlassBar : Window {
         }
         Icon = Imaging.CreateBitmapSourceFromHIcon(trayIcon.Handle, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
         tray = new WinForms.NotifyIcon { Icon = trayIcon, Text = "Token Bar", Visible = true };
+        tray.ContextMenuStrip = BuildTrayMenu();
+        tray.DoubleClick += (s, e) => { Show(); WindowState = WindowState.Normal; Activate(); };
+    }
+
+    // Shared by the tray icon and the taskbar strip; WinForms menus work without activation,
+    // which a WPF ContextMenu cannot guarantee for the no-activate strip window.
+    WinForms.ContextMenuStrip BuildTrayMenu() {
         var menu = new WinForms.ContextMenuStrip();
         menu.Items.Add("显示浮条", null, (s, e) => { Show(); WindowState = WindowState.Normal; Activate(); });
         menu.Items.Add("隐藏浮条", null, (s, e) => { hover.IsOpen = false; Hide(); });
+        var taskbarItem = new WinForms.ToolStripMenuItem("任务栏模式");
+        taskbarItem.Checked = config.Taskbar;
+        taskbarItem.Click += (s, e) => { ToggleTaskbar(); taskbarItem.Checked = config.Taskbar; };
+        menu.Items.Add(taskbarItem);
+        menu.Opening += (s, e) => taskbarItem.Checked = config.Taskbar;
         menu.Items.Add("连接设置", null, (s, e) => { Show(); Settings(); });
         menu.Items.Add("刷新", null, async (s, e) => await Refresh());
         menu.Items.Add("连接 DeepSeek 控制台", null, async (s, e) => await ConnectConsole(true));
@@ -321,8 +388,7 @@ class GlassBar : Window {
         menu.Items.Add("切换深色 / 浅色", null, (s, e) => ToggleTheme());
         menu.Items.Add(new WinForms.ToolStripSeparator());
         menu.Items.Add("退出", null, (s, e) => Close());
-        tray.ContextMenuStrip = menu;
-        tray.DoubleClick += (s, e) => { Show(); WindowState = WindowState.Normal; Activate(); };
+        return menu;
     }
 
     void DisposeTray() {
@@ -353,6 +419,7 @@ class GlassBar : Window {
         add("刷新", async () => await Refresh());
         add("连接 DeepSeek 控制台", async () => await ConnectConsole(true));
         add("连接 MiMo 控制台", async () => await ConnectMimo(true));
+        add(config.Taskbar ? "隐藏任务栏条" : "显示任务栏条", () => ToggleTaskbar());
         add(config.Display == "cycle" ? "切换为逐行列表" : "切换为轮换显示", () => ToggleDisplay());
         add(face.Light ? "切换 Dark" : "切换 Light", () => ToggleTheme());
         add(Topmost ? "取消置顶" : "保持置顶", () => Topmost = !Topmost);
@@ -374,6 +441,7 @@ class GlassBar : Window {
     void ToggleTheme() {
         face.Light = !face.Light;
         face.InvalidateVisual();
+        UpdateStrip();
         hover.IsOpen = false;
         Save();
     }
@@ -387,6 +455,7 @@ class GlassBar : Window {
             RebuildRows();
             Layout();
             Dock();
+            EnsureStrip();
             Save();
             var ignored = Refresh();
         }, async id => {
@@ -670,7 +739,7 @@ class GlassBar : Window {
 
         var visual = new DrawingVisual();
         using (var d = visual.RenderOpen()) {
-            d.DrawRectangle(new LinearGradientBrush(Paint.C("#26364C"), Paint.C("#91A1B9"), 30), null, new Rect(0, 0, 420, 620));
+            d.DrawRectangle(new LinearGradientBrush(Paint.C("#26364C"), Paint.C("#91A1B9"), 30), null, new Rect(0, 0, 420, 700));
             Paint.Text(d, "供应商列表 / 主额度环", 18, Brushes.White, new Point(24, 16), true);
             Paint.Text(d, "GLM 主环 + DeepSeek / Kimi / MiniMax / MiMo 逐行", 11, Brushes.White, new Point(24, 44));
 
@@ -700,8 +769,23 @@ class GlassBar : Window {
             horizontal.Render(d);
             d.Pop();
             d.Pop();
+
+            // Taskbar strip: every provider flat in one row.
+            var flat = new TaskbarFace { Light = false };
+            flat.Rows.Add(face.Primary);
+            foreach (var row in face.Rows) flat.Rows.Add(row);
+            flat.Width = flat.ContentWidth;
+            flat.Height = flat.ContentHeight;
+            flat.Measure(new Size(flat.Width, flat.Height));
+            flat.Arrange(new Rect(0, 0, flat.Width, flat.Height));
+            Paint.Text(d, "任务栏模式：贴在任务栏上方，所有用量平铺一行", 11, Brushes.White, new Point(12, bottom + 150));
+            d.PushTransform(new TranslateTransform(12, bottom + 168));
+            d.PushTransform(new ScaleTransform(UiScale, UiScale));
+            flat.Render(d);
+            d.Pop();
+            d.Pop();
         }
-        var bitmap = new RenderTargetBitmap(420, 620, 96, 96, PixelFormats.Pbgra32);
+        var bitmap = new RenderTargetBitmap(420, 700, 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(visual);
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(bitmap));

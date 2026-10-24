@@ -15,6 +15,7 @@ class SettingsWindow : Window {
     readonly List<Action> apply = new List<Action>();
     readonly HashSet<string> hidden = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     ComboBox display, primary;
+    CheckBox taskbar;
     readonly List<string> primaryIds = new List<string>();
 
     public SettingsWindow(Window owner, Config config, bool light, ImageSource icon, Action commit, Action<string> connect) {
@@ -69,6 +70,16 @@ class SettingsWindow : Window {
         row.Children.Add(new TextBlock { Text = "主额度", Foreground = Muted, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center });
         row.Children.Add(primary);
         panel.Children.Add(row);
+
+        taskbar = new CheckBox {
+            Content = "在任务栏上方显示用量条（所有供应商平铺一行）",
+            Foreground = Ink,
+            IsChecked = config.Taskbar,
+            Margin = new Thickness(0, 10, 0, 0)
+        };
+        panel.Children.Add(taskbar);
+        Hint(panel, "任务栏条默认贴右下角，可以横向拖动；右键有菜单，点击某个供应商会在浮条上打开它的详情。");
+        apply.Add(() => config.Taskbar = taskbar.IsChecked == true);
 
         Header(panel, "配色阈值");
         Hint(panel, "额度低于警戒线时圆环由绿转黄；今日花费达到预警转黄、达到告警转红，超过告警为深红。");

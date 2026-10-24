@@ -82,6 +82,15 @@ class GlassChecks {
         Check(face.Hit(new Point(130,60))==100);
         face.Horizontal=false;face.Width=132;
 
+        var stripFace=new TaskbarFace();
+        stripFace.Rows.Add(new Row{Id="glm",Label="ZHIPU",Meter=new Meter("GLM","5h 82%",""){FiveHour=82}});
+        stripFace.Rows.Add(new Row{Id="kimi",Label="KIMI",Meter=new Meter("Kimi","¥9.00","")});
+        Check(Math.Abs(stripFace.ContentWidth-(10+2*TaskbarFace.TileWidth))<.01);
+        Check(stripFace.Hit(new Point(20,20))==0);
+        Check(stripFace.Hit(new Point(10+TaskbarFace.TileWidth+20,20))==1);
+        Check(stripFace.Hit(new Point(4,20))==-1);
+        Check(stripFace.Hit(new Point(10+2*TaskbarFace.TileWidth+10,20))==-1);
+
         var deepRow=new Row{Id="deepseek",Label="DEEPSEEK",Meter=new Meter("DeepSeek","¥1.00",""),Usage=new TodayUsage{Date=DateTime.Now.ToString("yyyy-MM-dd"),Currency="CNY",Cost=4m}};
         var inkFace=new BarFace();
         var normal=((SolidColorBrush)inkFace.SpendInk(deepRow)).Color;
