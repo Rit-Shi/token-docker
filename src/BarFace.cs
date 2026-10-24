@@ -30,7 +30,7 @@ class BarFace : FrameworkElement {
     static readonly Geometry Zhipu = Paint.Icon("zhipu"), DeepSeek = Paint.Icon("deepseek");
 
     const double TopHeight = 142;   // primary quota block
-    const double RowHeight = 54;
+    const double RowHeight = 56;
     const double FooterHeight = 54;
 
     public bool Light, Horizontal, Busy;
@@ -180,18 +180,18 @@ class BarFace : FrameworkElement {
         double y = top + index * RowHeight;
         if (index > 0) d.DrawLine(new Pen(Divider, 1), new Point(31, y), new Point(101, y));
 
-        var center = new Point(28, y + RowHeight / 2 - 4);
+        var center = new Point(27, y + RowHeight / 2 - 4);
         if (HasWindows(row)) {
-            Paint.Arc(d, center, 16, row.Meter.FiveHour, Track, Limits.QuotaWarn);
-            Paint.Arc(d, center, 13, row.Meter.Weekly, Track, Limits.QuotaWarn);
-            Glyph(d, row.Id, new Rect(center.X - 9, center.Y - 9, 18, 18), Ink);
+            Paint.Arc(d, center, 13, row.Meter.FiveHour, Track, Limits.QuotaWarn);
+            Paint.Arc(d, center, 10, row.Meter.Weekly, Track, Limits.QuotaWarn);
+            Glyph(d, row.Id, new Rect(center.X - 7, center.Y - 7, 14, 14), Ink);
         } else {
-            Glyph(d, row.Id, new Rect(center.X - 11, center.Y - 11, 22, 22), Ink);
+            Glyph(d, row.Id, new Rect(center.X - 10, center.Y - 10, 20, 20), Ink);
         }
 
-        Paint.Text(d, row.Label, 8, Muted, new Point(50, y + 7), true, 60);
-        Paint.Text(d, row.Meter.Value, 12, Ink, new Point(50, y + 22), true, 66);
-        if (row.Usage != null) Paint.Text(d, SpendText(row), 8, SpendInk(row), new Point(50, y + 40), false, 66);
+        Paint.Text(d, row.Label, 9, Muted, new Point(47, y + 5), true, 64);
+        Paint.Text(d, row.Meter.Value, 15, Ink, new Point(47, y + 19), true, 70);
+        if (row.Usage != null) Paint.Text(d, SpendText(row), 9, SpendInk(row), new Point(47, y + 40), false, 70);
     }
 
     void DrawFooter(DrawingContext d, double height) {
@@ -264,17 +264,17 @@ class BarFace : FrameworkElement {
         for (int i = 0; i < Rows.Count; i++) {
             var row = Rows[i];
             double x = 118 + i * 86;
-            var center = new Point(x + 16, 32);
+            var center = new Point(x + 15, 31);
             if (HasWindows(row)) {
-                Paint.Arc(d, center, 13, row.Meter.FiveHour, Track, Limits.QuotaWarn);
-                Paint.Arc(d, center, 10, row.Meter.Weekly, Track, Limits.QuotaWarn);
-                Glyph(d, row.Id, new Rect(center.X - 7, center.Y - 7, 14, 14), Ink);
+                Paint.Arc(d, center, 11, row.Meter.FiveHour, Track, Limits.QuotaWarn);
+                Paint.Arc(d, center, 9, row.Meter.Weekly, Track, Limits.QuotaWarn);
+                Glyph(d, row.Id, new Rect(center.X - 6, center.Y - 6, 12, 12), Ink);
             } else {
-                Glyph(d, row.Id, new Rect(center.X - 9, center.Y - 9, 18, 18), Ink);
+                Glyph(d, row.Id, new Rect(center.X - 8, center.Y - 8, 16, 16), Ink);
             }
-            Paint.Text(d, row.Label, 8, Muted, new Point(x + 34, 22), true, 48);
-            Paint.Text(d, row.Meter.Value, 11, Ink, new Point(x + 4, 48), true, 78);
-            if (row.Usage != null) Paint.Text(d, SpendText(row), 8, SpendInk(row), new Point(x + 4, 68), false, 78);
+            Paint.Text(d, row.Label, 8, Muted, new Point(x + 30, 20), true, 52);
+            Paint.Text(d, row.Meter.Value, 13, Ink, new Point(x + 4, 44), true, 78);
+            if (row.Usage != null) Paint.Text(d, SpendText(row), 8, SpendInk(row), new Point(x + 4, 66), false, 78);
         }
 
         d.DrawEllipse(null, new Pen(Muted, 1.3), new Point(width - 30, 39), 6, 6);

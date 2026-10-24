@@ -592,7 +592,7 @@ class GlassBar : Window {
         hover.Placement = face.Horizontal ? PlacementMode.Bottom : face.Edge == "right" ? PlacementMode.Left : PlacementMode.Right;
         hover.HorizontalOffset = 8;
         double offset = 35 * UiScale;
-        if (hit >= 100) offset = (face.Primary != null ? 142 : 0) * UiScale + (hit - 100) * 54 * UiScale + 8;
+        if (hit >= 100) offset = (face.Primary != null ? 142 : 0) * UiScale + (hit - 100) * 56 * UiScale + 8;
         hover.VerticalOffset = face.Horizontal ? 8 : offset;
         hover.IsOpen = true;
     }
