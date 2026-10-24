@@ -85,7 +85,7 @@ class GlassBar : Window {
             } else {
                 strip.Show();
                 strip.UpdateLayout();
-                strip.Place(config.TaskbarX);
+                strip.Place(config.TaskbarX, config.TaskbarEdge == "top");
             }
         };
         Closed += (s, e) => {
@@ -106,6 +106,12 @@ class GlassBar : Window {
             var bytes = System.Security.Cryptography.ProtectedData.Unprotect(
                 File.ReadAllBytes(SettingsPath), null, System.Security.Cryptography.DataProtectionScope.CurrentUser);
             config = Data.Json().Deserialize<Config>(System.Text.Encoding.UTF8.GetString(bytes));
+            // The old top-docked horizontal bar is now the taskbar strip at the top edge.
+            if (config.Edge == "top") {
+                config.Edge = "right";
+                config.Taskbar = true;
+                config.TaskbarEdge = "top";
+            }
         } catch {
             state = "无法读取设置，请重新连接";
         }
@@ -209,12 +215,13 @@ class GlassBar : Window {
                 strip.MenuRequested = () => BuildTrayMenu().Show(WinForms.Cursor.Position);
                 strip.ThemeRequested = ToggleTheme;
                 strip.PositionChanged = x => { config.TaskbarX = x; Save(); };
+                strip.DetachRequested = DetachFromStrip;
             }
             UpdateStrip();
             if (!strip.IsVisible) strip.Show();
             // The window sizes itself to the content, so measure before placing it.
             strip.UpdateLayout();
-            strip.Place(config.TaskbarX);
+            strip.Place(config.TaskbarX, config.TaskbarEdge == "top");
         } catch (Exception error) {
             // A broken strip must not take the whole widget down with it.
             state = "任务栏条创建失败：" + error.Message;
@@ -357,10 +364,15 @@ class GlassBar : Window {
         double distance;
         string edge = Nearest(area, Left, Top, Width, out distance, UiScale);
 
-        // Dropping the bar on the bottom edge converts it into the taskbar strip.
+        // Dropping the bar on the top or bottom edge converts it into the taskbar strip there.
         double bottomGap = Math.Abs(Top + Height - area.Bottom);
+        double topGap = Math.Abs(Top - area.Top);
         if (snap && bottomGap < distance && bottomGap < 60) {
-            SwitchToTaskbar();
+            SwitchToTaskbar("bottom");
+            return;
+        }
+        if (snap && topGap < distance && topGap < 60) {
+            SwitchToTaskbar("top");
             return;
         }
 
@@ -381,9 +393,11 @@ class GlassBar : Window {
         face.InvalidateVisual();
     }
 
-    // Dragging the floating bar to the bottom edge morphs it into the taskbar strip there.
-    void SwitchToTaskbar() {
+    // Dragging the floating bar to the top or bottom edge morphs it into the taskbar strip there.
+    void SwitchToTaskbar(string edge) {
+        double fromY = Top;
         config.Taskbar = true;
+        config.TaskbarEdge = edge;
         config.TaskbarX = (int)Left;
         face.Pull = 0;
         velocity = 0;
@@ -391,7 +405,40 @@ class GlassBar : Window {
         EnsureStrip();
         hover.IsOpen = false;
         Hide();
+        if (strip != null) {
+            strip.Opacity = 1;
+            strip.AnimateIn(fromY - strip.Top);
+        }
         Save();
+    }
+
+    // Pulling the strip away from its edge brings the floating bar back at that spot.
+    void DetachFromStrip(double x, double y) {
+        bool fromTop = strip != null && strip.AtTop;
+        config.Taskbar = false;
+        EnsureStrip();
+        Left = x;
+        // Nudge away from the edge so the next drag does not immediately re-enter strip mode.
+        Top = fromTop ? y + 44 : y - 44;
+        Show();
+        Clamp();
+        AnimateBarIn(14);
+        Save();
+    }
+
+    // Fade + slide the bar in when it comes back from the strip.
+    void AnimateBarIn(double offsetY) {
+        var translate = new TranslateTransform(0, offsetY);
+        face.RenderTransform = translate;
+        Opacity = 0;
+        Anim.Tween(200, t => {
+            Opacity = t;
+            translate.Y = offsetY * (1 - t);
+            if (t >= 1) {
+                face.RenderTransform = Transform.Identity;
+                Opacity = 1;
+            }
+        });
     }
 
     void Spring() {

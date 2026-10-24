@@ -28,6 +28,9 @@ class TaskbarStrip : Window {
     public Action MenuRequested;
     public Action ThemeRequested;
     public Action<int> PositionChanged;
+    // Pulling the strip away from its edge turns it back into the floating bar.
+    public Action<double, double> DetachRequested;
+    public bool AtTop;
 
     public TaskbarStrip() {
         Title = "Token Bar · 任务栏";
@@ -102,9 +105,10 @@ class TaskbarStrip : Window {
         SetWindowLong(handle, GwlExStyle, style);
     }
 
-    // Sits just above a bottom taskbar, below a top one, and at the bottom edge when the
-    // taskbar auto-hides (the windows working area then equals the screen).
-    public void Place(int rememberedX) {
+    // The strip anchors to the top or bottom of the screen; the edge is chosen by where the
+    // floating bar was dropped and stored in the settings.
+    public void Place(int rememberedX, bool atTop) {
+        AtTop = atTop;
         var screen = WinForms.Screen.PrimaryScreen;
         var bounds = screen.Bounds;
         var work = screen.WorkingArea;
@@ -116,8 +120,20 @@ class TaskbarStrip : Window {
         double x = rememberedX >= 0 ? rememberedX : workRect.Right - Width - 12;
         x = Math.Max(workRect.Left, Math.Min(x, workRect.Right - Width));
         Left = x;
-        Top = workRect.Bottom - Height - 4;
-        if (workRect.Top > screenRect.Top) Top = workRect.Top + 4;
+        if (atTop) Top = workRect.Top > screenRect.Top ? workRect.Top + 4 : screenRect.Top + 4;
+        else Top = workRect.Bottom - Height - 4;
+    }
+
+    // Slide + fade in from the floating bar's previous position.
+    public void AnimateIn(double offsetY) {
+        var translate = new TranslateTransform(0, offsetY);
+        face.RenderTransform = translate;
+        Opacity = 0;
+        Anim.Tween(200, t => {
+            Opacity = t;
+            translate.Y = offsetY * (1 - t);
+            if (t >= 1) face.RenderTransform = Transform.Identity;
+        });
     }
 
     void OnMouseDown(object sender, MouseButtonEventArgs e) {
@@ -131,14 +147,25 @@ class TaskbarStrip : Window {
     void OnMouseMove(object sender, MouseEventArgs e) {
         var p = e.GetPosition(this);
         if (dragging) {
-            double delta = p.X - start.X;
-            if (Math.Abs(delta) > 3) moved = true;
+            double deltaX = p.X - start.X;
+            double deltaY = p.Y - start.Y;
+            if (Math.Abs(deltaX) > 3 || Math.Abs(deltaY) > 3) moved = true;
+
+            // Pulling inward (away from the docked edge) detaches the strip.
+            double away = AtTop ? deltaY : -deltaY;
+            if (away > 40) {
+                dragging = false;
+                face.ReleaseMouseCapture();
+                if (DetachRequested != null) DetachRequested(Left, Top);
+                return;
+            }
             if (!moved) return;
+
             var source = PresentationSource.FromVisual(this);
             var transform = source == null ? Matrix.Identity : source.CompositionTarget.TransformFromDevice;
             var work = WinForms.Screen.PrimaryScreen.WorkingArea;
             var workRect = new Rect(transform.Transform(new Point(work.Left, work.Top)), transform.Transform(new Point(work.Right, work.Bottom)));
-            Left = Math.Max(workRect.Left, Math.Min(origin + delta, workRect.Right - Width));
+            Left = Math.Max(workRect.Left, Math.Min(origin + deltaX, workRect.Right - Width));
             return;
         }
         int hit = face.Hit(p);

@@ -37,8 +37,9 @@ class Config {
     public bool MimoConnected=false;
     // Display: list | cycle. Hidden holds comma separated provider ids.
     public string Display="list", Primary="glm", Hidden="";
-    // Taskbar strip: enabled, plus the remembered horizontal position (-1 = right aligned).
+    // Taskbar strip: enabled, which screen edge it anchors to, and the remembered X (-1 = right aligned).
     public bool Taskbar=false;
+    public string TaskbarEdge="bottom";
     public int TaskbarX=-1;
     public bool IsHidden(string id){
         if(string.IsNullOrWhiteSpace(Hidden)) return false;

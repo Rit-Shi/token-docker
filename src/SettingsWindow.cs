@@ -72,13 +72,13 @@ class SettingsWindow : Window {
         panel.Children.Add(row);
 
         taskbar = new CheckBox {
-            Content = "在任务栏上方显示用量条（所有供应商平铺一行）",
+            Content = "任务栏模式（贴屏幕顶部/底部，所有供应商平铺一行）",
             Foreground = Ink,
             IsChecked = config.Taskbar,
             Margin = new Thickness(0, 10, 0, 0)
         };
         panel.Children.Add(taskbar);
-        Hint(panel, "任务栏条默认贴右下角，可以横向拖动；右键有菜单，点击某个供应商会在浮条上打开它的详情。");
+        Hint(panel, "把浮条拖到屏幕顶部或底部松手就会切到任务栏条，反过来把横条上下拔出来就恢复浮条；横条可横向拖动，右键有菜单。");
         apply.Add(() => config.Taskbar = taskbar.IsChecked == true);
 
         Header(panel, "配色阈值");
