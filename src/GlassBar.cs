@@ -650,6 +650,9 @@ class GlassBar : Window {
             TrackDaily(row);
         } catch (Exception error) {
             row.Meter = new Meter(info.Label, "读取失败", error.Message);
+            // Keep the stale estimate from sitting next to an error message.
+            row.Spend = null;
+            row.SpendCost = null;
         }
         face.InvalidateVisual();
     }
