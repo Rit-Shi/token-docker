@@ -26,6 +26,7 @@ class GlassBar : Window {
     readonly Popup hover = new Popup { AllowsTransparency = true, StaysOpen = true };
     readonly Dictionary<string, Row> rows = new Dictionary<string, Row>(StringComparer.OrdinalIgnoreCase);
     readonly List<Row> liveRows = new List<Row>();
+    readonly DailyLog daily = DailyLog.Load(Path.Combine(Root, "daily.json"));
     Config config = new Config();
     DeepSeekConsole console;
     MiMoConsole mimo;
@@ -75,6 +76,18 @@ class GlassBar : Window {
             spring.Start();
         };
         Loaded += OnLoaded;
+        // Taskbar mode and the floating bar never show at the same time: whichever surface is
+        // visible owns the screen, so showing one hides the other.
+        IsVisibleChanged += (s, e) => {
+            if (!config.Taskbar || strip == null) return;
+            if (IsVisible) {
+                strip.Hide();
+            } else {
+                strip.Show();
+                strip.UpdateLayout();
+                strip.Place(config.TaskbarX);
+            }
+        };
         Closed += (s, e) => {
             DisposeTray();
             hover.IsOpen = false;
@@ -111,6 +124,8 @@ class GlassBar : Window {
         if (config.MimoConnected) await ConnectMimo(false);
         await Refresh();
         EnsureStrip();
+        // Taskbar mode replaces the floating bar; it stays reachable from the tray menu.
+        if (config.Taskbar) Hide();
     }
 
     // ---- layout -------------------------------------------------------
@@ -211,6 +226,14 @@ class GlassBar : Window {
     void ToggleTaskbar() {
         config.Taskbar = !config.Taskbar;
         EnsureStrip();
+        if (config.Taskbar) {
+            hover.IsOpen = false;
+            Hide();
+        } else {
+            Show();
+            WindowState = WindowState.Normal;
+            Activate();
+        }
         Save();
     }
 
@@ -464,6 +487,12 @@ class GlassBar : Window {
             Layout();
             Dock();
             EnsureStrip();
+            if (config.Taskbar) {
+                hover.IsOpen = false;
+                Hide();
+            } else {
+                Show();
+            }
             Save();
             var ignored = Refresh();
         }, async id => {
@@ -618,10 +647,26 @@ class GlassBar : Window {
         }
         try {
             row.Meter = await Fetch.Run(info, config, FetchMimo);
+            TrackDaily(row);
         } catch (Exception error) {
             row.Meter = new Meter(info.Label, "读取失败", error.Message);
         }
         face.InvalidateVisual();
+    }
+
+    // Providers that only return a balance get an estimated daily spend from the balance drop.
+    void TrackDaily(Row row) {
+        if (preview || row.Meter == null || !row.Meter.Amount.HasValue) return;
+        decimal spend = daily.Sample(row.Id, row.Meter.Amount.Value);
+        if (spend <= 0) {
+            row.Spend = null;
+            row.SpendCost = null;
+            return;
+        }
+        string currency = string.IsNullOrEmpty(row.Meter.Currency) ? "CNY" : row.Meter.Currency;
+        string money = currency == "CNY" ? "¥" : currency == "USD" ? "$" : currency + " ";
+        row.SpendCost = spend;
+        row.Spend = "今日 ≈" + money + spend.ToString("0.00");
     }
 
     // ---- hover --------------------------------------------------------
@@ -702,6 +747,9 @@ class GlassBar : Window {
             lines.Add(BarFace.SpendText(row));
             lines.Add("Token " + (row.Usage.Tokens.HasValue ? row.Usage.Tokens.Value.ToString("N0") : "暂无数据"));
             if (!string.IsNullOrEmpty(row.Usage.Source)) lines.Add(row.Usage.Source);
+        } else if (row.Spend != null) {
+            lines.Add("");
+            lines.Add(row.Spend + "（按当日余额差估算）");
         }
         lines.Add("");
         lines.Add(state);

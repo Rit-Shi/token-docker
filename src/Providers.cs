@@ -18,6 +18,10 @@ class Meter {
     public string Name, Value, Detail;
     public double? Remaining;
     public double? FiveHour, Weekly;
+    // Numeric balance and its currency, when the provider exposes one. Used to estimate
+    // today's spend from the balance difference for providers without a usage endpoint.
+    public decimal? Amount;
+    public string Currency;
     public Meter(string n, string v, string d, double? r = null) { Name=n; Value=v; Detail=d; Remaining=r; }
 }
 class Config {
@@ -76,14 +80,16 @@ static class Data {
     }
     public static Meter Deep(object result) {
         var balances=Get(result,"balance_infos") as IEnumerable; var lines=new List<string>(); var values=new List<string>();
+        decimal? total=null; string mainCurrency=null;
         if(balances!=null) foreach(var item in balances) {
             string currency=Str(Get(item,"currency")); decimal amount;
             if(!decimal.TryParse(Str(Get(item,"total_balance")),NumberStyles.Number,CultureInfo.InvariantCulture,out amount)) continue;
             values.Add((currency=="CNY"?"¥":currency=="USD"?"$":currency+" ")+amount.ToString("0.00",CultureInfo.InvariantCulture));
             lines.Add(currency+" 可用 "+amount.ToString("0.00")+"；赠金 "+Str(Get(item,"granted_balance"))+"；充值 "+Str(Get(item,"topped_up_balance")));
+            if(!total.HasValue || currency=="CNY") { total=amount; mainCurrency=currency; }
         }
         if(values.Count==0) throw new Exception("接口未返回有效余额");
-        return new Meter("DeepSeek",string.Join(" / ",values),string.Join("\n",lines)+(Get(result,"is_available") is bool && !(bool)Get(result,"is_available")?"\n当前不可用于 API 调用":""));
+        return new Meter("DeepSeek",string.Join(" / ",values),string.Join("\n",lines)+(Get(result,"is_available") is bool && !(bool)Get(result,"is_available")?"\n当前不可用于 API 调用":"")) {Amount=total,Currency=mainCurrency};
     }
     public static string Money(string currency,double amount) {
         string number=amount.ToString("0.00",CultureInfo.InvariantCulture);
@@ -124,7 +130,7 @@ static class Data {
         if(cash.HasValue) lines.Add("现金 "+Money(currency,cash.Value));
         if(available.Value<=0) lines.Add("余额不足，API 调用会被拒绝");
         lines.Add("更新于 "+DateTime.Now.ToString("HH:mm:ss"));
-        return new Meter("Kimi",Money(currency,available.Value),string.Join("\n",lines));
+        return new Meter("Kimi",Money(currency,available.Value),string.Join("\n",lines)) {Amount=(decimal)available.Value,Currency=currency};
     }
     public static Meter KimiUsage(object result) {
         double? five=null, week=null, month=null; var lines=new List<string>();
@@ -202,7 +208,7 @@ static class Data {
         if(credit.HasValue) lines.Add("赠送 "+Money(currency,credit.Value));
         if(available.Value<=0) lines.Add("余额不足，API 调用会被拒绝");
         lines.Add("更新于 "+DateTime.Now.ToString("HH:mm:ss"));
-        return new Meter("MiniMax",Money(currency,available.Value),string.Join("\n",lines));
+        return new Meter("MiniMax",Money(currency,available.Value),string.Join("\n",lines)) {Amount=(decimal)available.Value,Currency=currency};
     }
     public static Meter Mimo(object balance,object usage,object detail) {
         var balanceData=Get(balance,"data");
@@ -235,7 +241,7 @@ static class Data {
         }
         if(!month.HasValue&&!amount.HasValue) throw new Exception("接口未返回可识别的额度");
         string value=month.HasValue?"月 "+Pct(month):Money(currency,amount.Value);
-        return new Meter("MiMo",value,string.Join("\n",lines)) {Weekly=month};
+        return new Meter("MiMo",value,string.Join("\n",lines)) {Weekly=month,Amount=amount.HasValue?(decimal?)(decimal)amount.Value:null,Currency=currency};
     }
     public static async Task<object> Fetch(string url,string key,bool bearer) {
         using(var handler=new HttpClientHandler { AllowAutoRedirect=false })

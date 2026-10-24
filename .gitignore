@@ -24,6 +24,7 @@ Web Data*
 *.har
 *.dmp
 connection-status.txt
+daily.json
 glass-test.txt
 test-result.txt
 

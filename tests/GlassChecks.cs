@@ -97,5 +97,22 @@ class GlassChecks {
         inkFace.Limits=new Limits{CostWarn=1,CostDanger=2};
         Check(((SolidColorBrush)inkFace.SpendInk(deepRow)).Color!=normal);
         Check(BarFace.SpendText(deepRow)=="今日 ¥4.00");
+
+        var estRow=new Row{Id="kimi",Label="KIMI",Meter=new Meter("Kimi","¥48.00",""),Spend="今日 ≈¥1.50",SpendCost=1.5m};
+        Check(BarFace.SpendText(estRow)=="今日 ≈¥1.50");
+        Check(BarFace.SpendText(new Row{Id="kimi",Label="KIMI",Meter=new Meter("Kimi","","")})=="今日 —");
+
+        string logPath=System.IO.Path.Combine(System.IO.Path.GetTempPath(),"tb-dailylog-"+Guid.NewGuid().ToString("N")+".json");
+        var log=DailyLog.Load(logPath);
+        Check(log.Sample("kimi",100m)==0m);
+        Check(log.Sample("kimi",98.5m)==1.5m);
+        Check(log.Sample("kimi",108.5m)==1.5m);
+        Check(log.Sample("kimi",107m)==3m);
+        var reloaded=DailyLog.Load(logPath);
+        Check(reloaded.Sample("kimi",107m)==3m);
+        System.IO.File.Delete(logPath);
+
+        var kimiBalance=Data.KimiBalance(Data.Json().DeserializeObject("{\"code\":0,\"data\":{\"available_balance\":49.5,\"voucher_balance\":46.5,\"cash_balance\":3.0}}"),false);
+        Check(kimiBalance.Amount.HasValue&&Math.Abs((double)kimiBalance.Amount.Value-49.5)<.001&&kimiBalance.Currency=="CNY");
     }
 }

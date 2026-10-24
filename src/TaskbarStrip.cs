@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -49,7 +50,9 @@ class TaskbarStrip : Window {
         face.MouseMove += OnMouseMove;
         face.MouseLeftButtonUp += OnMouseUp;
         face.MouseRightButtonUp += (s, e) => { if (MenuRequested != null) MenuRequested(); };
-        face.MouseLeave += (s, e) => { face.Hover = -1; face.InvalidateVisual(); };
+        face.MouseLeave += (s, e) => { face.Hover = -1; face.ToolTip = null; face.InvalidateVisual(); };
+        ToolTipService.SetInitialShowDelay(face, 350);
+        ToolTipService.SetShowDuration(face, 20000);
     }
 
     public void Update(System.Collections.Generic.List<Row> rows, bool light, Limits limits) {
@@ -140,7 +143,15 @@ class TaskbarStrip : Window {
         int hit = face.Hit(p);
         if (hit == face.Hover) return;
         face.Hover = hit;
+        face.ToolTip = hit >= 0 && hit < face.Rows.Count ? Details(face.Rows[hit]) : null;
         face.InvalidateVisual();
+    }
+
+    // Hovering a tile shows the same detail the floating bar would, including the estimate.
+    static string Details(Row row) {
+        string text = row.Label + "\n" + row.Meter.Detail;
+        if (row.Spend != null) text += "\n" + row.Spend + "（按当日余额差估算）";
+        return text;
     }
 
     void OnMouseUp(object sender, MouseButtonEventArgs e) {

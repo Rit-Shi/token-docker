@@ -23,6 +23,9 @@ class Row {
     public string Id, Label;
     public Meter Meter = new Meter("", "未配置", "请在设置中连接");
     public TodayUsage Usage;
+    // Estimated spend for providers that only expose a balance ("今日 ≈¥1.20").
+    public string Spend;
+    public decimal? SpendCost;
 }
 
 // Draws the bar itself. Coordinates are logical units; GlassBar scales the whole visual.
@@ -59,11 +62,12 @@ class BarFace : FrameworkElement {
     }
 
     public static string SpendText(Row row) {
-        if (!IsToday(row.Usage)) return "今日 —";
-        if (row.Usage.DisplayCost != null) return "今日 " + row.Usage.DisplayCost;
-        if (row.Usage.Cost.HasValue)
-            return "今日 " + (row.Usage.Currency == "CNY" ? "¥" : "$") + row.Usage.Cost.Value.ToString("0.00");
-        return "今日 —";
+        if (IsToday(row.Usage)) {
+            if (row.Usage.DisplayCost != null) return "今日 " + row.Usage.DisplayCost;
+            if (row.Usage.Cost.HasValue)
+                return "今日 " + (row.Usage.Currency == "CNY" ? "¥" : "$") + row.Usage.Cost.Value.ToString("0.00");
+        }
+        return row.Spend != null ? row.Spend : "今日 —";
     }
 
     // Short values (money, single percentages) get the larger size; long plan strings stay a notch smaller.
@@ -74,6 +78,7 @@ class BarFace : FrameworkElement {
     public Brush SpendInk(Row row) {
         decimal? cost = null;
         if (IsToday(row.Usage)) cost = row.Usage.CnyCost ?? (row.Usage.Currency == "CNY" ? row.Usage.Cost : null);
+        else if (row.SpendCost.HasValue) cost = row.SpendCost;
         return new SolidColorBrush(Paint.Expense(cost, Limits.CostWarn, Limits.CostDanger));
     }
 
@@ -200,7 +205,7 @@ class BarFace : FrameworkElement {
 
         Paint.Text(d, row.Label, 9, Muted, new Point(47, y + 5), true, 64);
         Paint.Text(d, row.Meter.Value, ValueSize(row, 16, 14), Ink, new Point(47, y + 19), true, 70);
-        if (row.Usage != null) Paint.Text(d, SpendText(row), 9, SpendInk(row), new Point(47, y + 40), false, 70);
+        if (row.Usage != null || row.Spend != null) Paint.Text(d, SpendText(row), 9, SpendInk(row), new Point(47, y + 40), false, 70);
     }
 
     void DrawFooter(DrawingContext d, double height) {
@@ -283,7 +288,7 @@ class BarFace : FrameworkElement {
             }
             Paint.Text(d, row.Label, 9, Muted, new Point(x + 30, 18), true, 52);
             Paint.Text(d, row.Meter.Value, ValueSize(row, 16, 14), Ink, new Point(x + 4, 40), true, 80);
-            if (row.Usage != null) Paint.Text(d, SpendText(row), 8, SpendInk(row), new Point(x + 4, 66), false, 80);
+            if (row.Usage != null || row.Spend != null) Paint.Text(d, SpendText(row), 8, SpendInk(row), new Point(x + 4, 66), false, 80);
         }
 
         d.DrawEllipse(null, new Pen(Muted, 1.3), new Point(width - 30, 39), 6, 6);
