@@ -3,8 +3,9 @@
 ## 本地存储
 
 - API Key 与应用设置保存在可执行程序旁的 `settings.dat`，由 Windows DPAPI `CurrentUser` 加密。它不是明文，但同一 Windows 用户下的程序仍可能解密；不防御已控制该账户的恶意软件。
-- DeepSeek 登录会话由 WebView2 保存在程序旁的 `console-profile/`。其中可能包含 Cookie、LocalStorage、缓存及浏览器管理的其他登录数据。应用没有对整个目录统一加密，必须视为敏感资料。
+- DeepSeek 与小米 MiMo 的登录会话由 WebView2 分别保存在程序旁的 `console-profile/` 和 `mimo-profile/`。其中可能包含 Cookie、LocalStorage、缓存及浏览器管理的其他登录数据。应用没有对整个目录统一加密，必须视为敏感资料。
 - 应用没有自行保存控制台密码。网页桥接在页面内存中使用授权令牌，只向本机应用传递筛选后的用量和余额，不额外持久化授权令牌。
+- `daily.json` 保存当日余额采样（日期与金额，用于估算今日花费），不含 Key；`crash.txt` 记录未处理异常的堆栈，可能包含本机路径。两者都只应留在本机。
 - `connection-status.txt` 记录连接状态、接口错误等诊断信息；代码不主动记录 API Key 或 Authorization。日志仍应留在本机，分享前检查内容。
 
 ## 网络
