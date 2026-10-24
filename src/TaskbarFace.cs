@@ -46,15 +46,35 @@ class TaskbarFace : FrameworkElement {
         return new SolidColorBrush(Paint.Quota(row.Meter.FiveHour, Limits.QuotaWarn));
     }
 
-    // Plan tiles show both windows, balance tiles append today's spend: "¥42.36 | ¥1.20".
+    // Balance tiles append today's spend as a second, separately coloured segment.
+    bool HasSpend(Row row) {
+        return !HasWindows(row) && row.SpendCost.HasValue && row.SpendCost.Value > 0;
+    }
+
+    string SpendPart(Row row) {
+        string currency = string.IsNullOrEmpty(row.Meter.Currency) ? "CNY" : row.Meter.Currency;
+        string symbol = currency == "CNY" ? "¥" : currency == "USD" ? "$" : currency + " ";
+        return symbol + row.SpendCost.Value.ToString("0.00");
+    }
+
     string Text(Row row) {
         if (HasWindows(row)) return row.Meter.Compact;
-        if (row.SpendCost.HasValue && row.SpendCost.Value > 0) {
-            string currency = string.IsNullOrEmpty(row.Meter.Currency) ? "CNY" : row.Meter.Currency;
-            string symbol = currency == "CNY" ? "¥" : currency == "USD" ? "$" : currency + " ";
-            return row.Meter.Value + " | " + symbol + row.SpendCost.Value.ToString("0.00");
-        }
+        if (HasSpend(row)) return row.Meter.Value + " | " + SpendPart(row);
         return row.Meter.Value;
+    }
+
+    // The spend segment uses the same green -> yellow -> red ramp as the floating bar.
+    void DrawValue(DrawingContext d, Row row, Point at, double max) {
+        double size = ValueSize(row);
+        if (!HasSpend(row)) {
+            Paint.Text(d, Text(row), size, ValueInk(row), at, true, max);
+            return;
+        }
+        Paint.Text(d, row.Meter.Value, size, Ink, at, true, max);
+        double used = Math.Min(Paint.Measure(row.Meter.Value, size, true), max);
+        string tail = " | " + SpendPart(row);
+        var brush = new SolidColorBrush(Paint.Expense(row.SpendCost, Limits.CostWarn, Limits.CostDanger));
+        Paint.Text(d, tail, size, brush, new Point(at.X + used, at.Y), true, Math.Max(12, max - used));
     }
 
     double ValueSize(Row row) {
@@ -112,7 +132,7 @@ class TaskbarFace : FrameworkElement {
 
             Glyph(d, row.Id, new Rect(x, 9, 20, 20), Ink);
             Paint.Text(d, row.Label, 7, Muted, new Point(x + 26, 8), true, 80);
-            Paint.Text(d, Text(row), ValueSize(row), ValueInk(row), new Point(x + 26, 18), true, 86);
+            DrawValue(d, row, new Point(x + 26, 18), 86);
         }
 
         // Buttons, mirrored from the floating bar's footer.

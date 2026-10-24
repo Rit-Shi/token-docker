@@ -64,6 +64,16 @@ static class Paint {
         d.DrawText(formatted, new Point(area.X + (area.Width - formatted.Width) / 2, area.Y + (area.Height - formatted.Height) / 2));
     }
 
+    // Width of a single-line run, used to place a second coloured segment after it.
+    public static double Measure(string text, double size, bool bold = false) {
+        var typeface = new Typeface(new FontFamily("Segoe UI, Microsoft YaHei UI"), FontStyles.Normal,
+            bold ? FontWeights.SemiBold : FontWeights.Normal, FontStretches.Normal);
+#pragma warning disable 0618
+        var formatted = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, size, Brushes.Transparent);
+#pragma warning restore 0618
+        return formatted.WidthIncludingTrailingWhitespace;
+    }
+
     public static Geometry Icon(string name) {
         using (var stream = typeof(Paint).Assembly.GetManifestResourceStream(name + ".svg")) {
             var xml = new XmlDocument { XmlResolver = null };
