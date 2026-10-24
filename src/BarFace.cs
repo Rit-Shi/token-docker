@@ -51,7 +51,7 @@ class BarFace : FrameworkElement {
     }
 
     public double ContentWidth {
-        get { return Horizontal ? 118 + Rows.Count * 86 + 54 : 132; }
+        get { return Horizontal ? 118 + Rows.Count * 92 + 54 : 132; }
     }
 
     static bool IsToday(TodayUsage usage) {
@@ -64,6 +64,11 @@ class BarFace : FrameworkElement {
         if (row.Usage.Cost.HasValue)
             return "今日 " + (row.Usage.Currency == "CNY" ? "¥" : "$") + row.Usage.Cost.Value.ToString("0.00");
         return "今日 —";
+    }
+
+    // Short values (money, single percentages) get the larger size; long plan strings stay a notch smaller.
+    double ValueSize(Row row, double large, double small) {
+        return row.Meter.Value != null && row.Meter.Value.Length <= 7 ? large : small;
     }
 
     public Brush SpendInk(Row row) {
@@ -99,7 +104,7 @@ class BarFace : FrameworkElement {
         if (p.Y < 18) return 0;
         if (p.X < 118) return 1;
         if (p.X > Width - 46) return p.Y < 58 ? 3 : 4;
-        int index = (int)((p.X - 118) / 86);
+        int index = (int)((p.X - 118) / 92);
         return index < Rows.Count ? 100 + index : 0;
     }
 
@@ -190,7 +195,7 @@ class BarFace : FrameworkElement {
         }
 
         Paint.Text(d, row.Label, 9, Muted, new Point(47, y + 5), true, 64);
-        Paint.Text(d, row.Meter.Value, 15, Ink, new Point(47, y + 19), true, 70);
+        Paint.Text(d, row.Meter.Value, ValueSize(row, 16, 14), Ink, new Point(47, y + 19), true, 70);
         if (row.Usage != null) Paint.Text(d, SpendText(row), 9, SpendInk(row), new Point(47, y + 40), false, 70);
     }
 
@@ -263,7 +268,7 @@ class BarFace : FrameworkElement {
         d.DrawLine(new Pen(Divider, 1), new Point(112, 30), new Point(112, 88));
         for (int i = 0; i < Rows.Count; i++) {
             var row = Rows[i];
-            double x = 118 + i * 86;
+            double x = 118 + i * 92;
             var center = new Point(x + 15, 31);
             if (HasWindows(row)) {
                 Paint.Arc(d, center, 11, row.Meter.FiveHour, Track, Limits.QuotaWarn);
@@ -272,9 +277,9 @@ class BarFace : FrameworkElement {
             } else {
                 Glyph(d, row.Id, new Rect(center.X - 8, center.Y - 8, 16, 16), Ink);
             }
-            Paint.Text(d, row.Label, 8, Muted, new Point(x + 30, 20), true, 52);
-            Paint.Text(d, row.Meter.Value, 13, Ink, new Point(x + 4, 44), true, 78);
-            if (row.Usage != null) Paint.Text(d, SpendText(row), 8, SpendInk(row), new Point(x + 4, 66), false, 78);
+            Paint.Text(d, row.Label, 9, Muted, new Point(x + 30, 18), true, 52);
+            Paint.Text(d, row.Meter.Value, ValueSize(row, 16, 14), Ink, new Point(x + 4, 40), true, 80);
+            if (row.Usage != null) Paint.Text(d, SpendText(row), 8, SpendInk(row), new Point(x + 4, 66), false, 80);
         }
 
         d.DrawEllipse(null, new Pen(Muted, 1.3), new Point(width - 30, 39), 6, 6);
